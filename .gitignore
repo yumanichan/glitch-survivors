@@ -1,0 +1,7 @@
+# バックアップ・デプロイ記録は Git 管理外（プロジェクトルール参照）
+backups/
+deployed/
+
+# OS / エディタ
+Thumbs.db
+.DS_Store
