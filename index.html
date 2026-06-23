@@ -51,11 +51,17 @@
   #hptext { position:absolute; inset:0; font-size:11px; font-weight:700; display:flex; align-items:center;
             justify-content:center; text-shadow:0 1px 2px #000; }
   #loadout { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; max-width:230px; }
-  .slot { width:34px; height:34px; border-radius:8px; background:rgba(8,14,22,.8); border:1px solid rgba(70,224,200,.3);
-          display:flex; align-items:center; justify-content:center; font-size:18px; position:relative; }
+  .slot { width:36px; height:36px; border-radius:8px; background:rgba(8,14,22,.8); border:1px solid rgba(70,224,200,.3);
+          display:flex; align-items:center; justify-content:center; font-size:19px; position:relative; transition:border-color .2s; }
   .slot.passive { border-color:rgba(255,207,58,.4); }
-  .slot .pip { position:absolute; bottom:-3px; right:-3px; font-size:9px; font-weight:800; background:#0a0e14;
-               border:1px solid currentColor; border-radius:7px; padding:0 3px; line-height:13px; }
+  .slot .pip { position:absolute; bottom:-4px; right:-4px; font-size:10px; font-weight:800; background:#0a0e14; color:#fff;
+               border:1px solid currentColor; border-radius:7px; padding:0 4px; line-height:14px; min-width:8px; text-align:center; }
+  .slot.max { border-color:var(--gold); box-shadow:0 0 7px rgba(255,207,58,.45); }
+  .slot.max .pip { color:var(--gold); }
+  .slot.evolved { border-color:#ff8a3c; box-shadow:0 0 12px rgba(255,138,60,.7); }
+  .slot.evolved .pip { color:#ffcf3a; }
+  .slot.pop { animation:slotpop .45s ease; }
+  @keyframes slotpop { 0%{transform:scale(1)} 35%{transform:scale(1.5); box-shadow:0 0 18px var(--accent)} 100%{transform:scale(1)} }
 
   #controls { position:absolute; bottom:12px; left:12px; font-size:12px; line-height:1.7; opacity:.75; }
   #controls b { color:var(--accent); }
@@ -436,7 +442,7 @@ const player={
   moveSpeed:8.5, might:1, haste:1, area:1, magnet:5.5, growth:1, armor:0, regen:0,
   hurtCd:0, dashCd:0, dashT:0, lastDir:new THREE.Vector3(0,0,1),
   weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, flameMesh:null, flameCache:0,
-  crit:0, amount:0, lifesteal:0, alive:true, down:false, downT:0, reviveP:0,
+  crit:0, amount:0, lifesteal:0, evo:{}, alive:true, down:false, downT:0, reviveP:0,
 };
 scene.add(player.group);
 
@@ -528,23 +534,22 @@ function lightningStrike(e,dmg){ if(e.dead)return; lightningFx(e.group.position)
 const WDEF={
   bolt:{ name:'マジックボルト', emoji:'✨', max:8,
     cd:(l)=>Math.max(0.32,1.1-l*0.085),
-    fire(l){ const count=1+Math.floor(l/2)+(player.amount||0); const dmg=(11+l*5)*player.might;
+    fire(l,evo){ const count=1+Math.floor(l/2)+(player.amount||0)+(evo?3:0); const dmg=(11+l*5)*player.might*(evo?1.6:1);
       const tg=nearestEnemies(count,62); const o=player.group.position;
       for(let i=0;i<count;i++){ const t=tg[i]||tg[0]; let dir;
         if(t){ dir=new THREE.Vector3(t.group.position.x-o.x,0,t.group.position.z-o.z).normalize(); }
         else { dir=new THREE.Vector3(player.lastDir.x,0,player.lastDir.z).normalize(); if(dir.lengthSq()<0.01)dir.set(0,0,1); }
-        // small spread for multi
         if(count>1&&!t){ dir.applyAxisAngle(new THREE.Vector3(0,1,0),(i-(count-1)/2)*0.22); }
-        spawnProjectile(o,dir,dmg,1+Math.floor(l/3)); }
+        spawnProjectile(o,dir,dmg,1+Math.floor(l/3)+(evo?3:0)); }
       sfx.shoot(); },
     desc:(l)=>`ホーミング弾 ${1+Math.floor((l+1)/2)}発 · ダメージ${Math.round((11+(l+1)*5))}` },
   nova:{ name:'ショックノヴァ', emoji:'💥', max:8,
     cd:(l)=>Math.max(1.1,3.3-l*0.26),
-    fire(l){ novaBlast((4.3+l*0.7)*player.area,(15+l*8)*player.might); },
+    fire(l,evo){ novaBlast((4.3+l*0.7)*player.area*(evo?1.7:1),(15+l*8)*player.might*(evo?1.8:1)); },
     desc:(l)=>`衝撃波 半径${(4.3+(l+1)*0.7).toFixed(1)}m · ダメージ${Math.round((15+(l+1)*8))}` },
   spark:{ name:'チェインスパーク', emoji:'⚡', max:8,
     cd:(l)=>Math.max(0.85,2.3-l*0.18),
-    fire(l){ const c=1+Math.floor((l+1)/2)+(player.amount||0); const dmg=(19+l*9)*player.might;
+    fire(l,evo){ const c=1+Math.floor((l+1)/2)+(player.amount||0)+(evo?4:0); const dmg=(19+l*9)*player.might*(evo?1.6:1);
       nearestEnemies(c,42).forEach(e=>lightningStrike(e,dmg)); },
     desc:(l)=>`最大${1+Math.floor((l+2)/2)}体に連鎖 · ダメージ${Math.round((19+(l+1)*9))}` },
   orb:{ name:'オービットガード', emoji:'🛰️', max:8,
@@ -555,17 +560,17 @@ const WDEF={
     desc:(l)=>`周囲 ${(2.2+(l+1)*0.32).toFixed(1)}m に 毎秒${Math.round((13+(l+1)*7))}` },
   meteor:{ name:'メテオ', emoji:'☄️', max:8,
     cd:(l)=>Math.max(1.5,3.8-l*0.28),
-    fire(l){ const n=1+Math.floor(l/2)+(player.amount||0); const dmg=(30+l*12)*player.might; const rad=(3.0+l*0.28)*player.area;
+    fire(l,evo){ const n=1+Math.floor(l/2)+(player.amount||0)+(evo?2:0); const dmg=(30+l*12)*player.might*(evo?1.7:1); const rad=(3.0+l*0.28)*player.area*(evo?1.5:1);
       for(let i=0;i<n;i++) spawnMeteor(player.group.position,dmg,rad); },
     desc:(l)=>`隕石 ${1+Math.floor((l+1)/2)}発 · 範囲ダメージ${Math.round((30+(l+1)*12))}` },
   blade:{ name:'スピンブレード', emoji:'🗡️', max:8,
     cd:(l)=>Math.max(0.6,1.8-l*0.14),
-    fire(l){ bladeSpin((2.6+l*0.25)*player.area,(16+l*7)*player.might); },
+    fire(l,evo){ bladeSpin((2.6+l*0.25)*player.area*(evo?1.6:1),(16+l*7)*player.might*(evo?1.7:1)); },
     desc:(l)=>`周囲 ${(2.6+(l+1)*0.25).toFixed(1)}m を薙ぐ · ダメージ${Math.round((16+(l+1)*7))}` },
   chakram:{ name:'チャクラム', emoji:'🪃', max:8,
     cd:(l)=>Math.max(0.7,2.0-l*0.15),
-    fire(l){ const n=3+Math.floor(l/2)+(player.amount||0); const dmg=(13+l*6)*player.might;
-      for(let i=0;i<n;i++){ const a=(game._chakA||0)+i/n*TAU; const dir=new THREE.Vector3(Math.sin(a),0,Math.cos(a)); spawnProjectile(player.group.position,dir,dmg,2+Math.floor(l/3)); }
+    fire(l,evo){ const n=3+Math.floor(l/2)+(player.amount||0)+(evo?5:0); const dmg=(13+l*6)*player.might*(evo?1.6:1);
+      for(let i=0;i<n;i++){ const a=(game._chakA||0)+i/n*TAU; const dir=new THREE.Vector3(Math.sin(a),0,Math.cos(a)); spawnProjectile(player.group.position,dir,dmg,2+Math.floor(l/3)+(evo?2:0)); }
       game._chakA=(game._chakA||0)+0.6; sfx.shoot(); },
     desc:(l)=>`${3+Math.floor((l+1)/2)}方向に貫通刃 · ダメージ${Math.round((13+(l+1)*6))}` },
 };
@@ -584,6 +589,24 @@ const PDEF={
   leech:{ name:'ライフスティール', emoji:'🩸', max:5, d:'撃破で HP+1', apply(){player.lifesteal=(player.lifesteal||0)+1;} },
 };
 const weaponTimers={ bolt:0, nova:0, spark:0, meteor:0, blade:0, chakram:0 };
+// 🧬 武器の進化: 武器Lv MAX + 対応パッシブ Lv MAX で進化版に化ける
+const EVOLVE={
+  bolt:   { req:'crit',  emoji:'🌩️', name:'ストームボルト' },
+  nova:   { req:'reso',  emoji:'🌟', name:'スーパーノヴァ' },
+  spark:  { req:'haste', emoji:'⚡', name:'サンダーストーム' },
+  orb:    { req:'armor', emoji:'🛸', name:'イージスオーブ' },
+  flame:  { req:'vit',   emoji:'🌋', name:'インフェルノ' },
+  meteor: { req:'might', emoji:'🌠', name:'メテオストーム' },
+  blade:  { req:'boots', emoji:'🌀', name:'ブレードストーム' },
+  chakram:{ req:'multi', emoji:'💫', name:'チャクラムストーム' },
+};
+function checkEvolutions(){
+  for(const id in EVOLVE){ const ev=EVOLVE[id];
+    if((player.weapons[id]||0)>=WDEF[id].max && (player.passives[ev.req]||0)>=PDEF[ev.req].max && !player.evo[id]){
+      player.evo[id]=true;
+      toast(`${ev.emoji} ${ev.name} に進化！`,'gold'); sfx.boss(); flashScreen(); game.shake=Math.max(game.shake,0.7);
+    } }
+}
 
 // =================================================================
 //  COMBAT helpers
@@ -705,7 +728,7 @@ function choose(idx){
   else if(opt.type==='wnew'){ player.weapons[opt.id]=1; if(opt.id in weaponTimers)weaponTimers[opt.id]=0; toast(`${WDEF[opt.id].emoji} ${WDEF[opt.id].name} 解放！`,'gold'); }
   else if(opt.type==='pas'){ PDEF[opt.id].apply(); player.passives[opt.id]=(player.passives[opt.id]||0)+1; toast(`${PDEF[opt.id].emoji} ${PDEF[opt.id].name}`,'gold'); }
   else { player.hp=Math.min(player.maxhp,player.hp+60); }
-  consumeLevel(); renderLoadout(); refreshHUD();
+  consumeLevel(); checkEvolutions(); renderLoadout(opt.id); refreshHUD();
   if(player.xp>=player.xpNext){ openLevelUp(); }      // chain multi-level
   else { document.getElementById('levelup').classList.remove('show'); game.state='playing'; }
 }
@@ -725,12 +748,15 @@ function refreshHUD(){
   ui.hptext.textContent=`${Math.max(0,Math.ceil(player.hp))} / ${player.maxhp}`;
   ui.lowhp.style.opacity=(player.hp/player.maxhp<0.3)?'1':'0';
 }
-function renderLoadout(){
+function renderLoadout(poppedId){
   ui.loadout.innerHTML='';
-  for(const id in player.weapons){ const s=document.createElement('div'); s.className='slot';
-    s.innerHTML=`${WDEF[id].emoji}<span class="pip">${player.weapons[id]}</span>`; ui.loadout.appendChild(s); }
-  for(const id in player.passives){ const s=document.createElement('div'); s.className='slot passive';
-    s.innerHTML=`${PDEF[id].emoji}<span class="pip">${player.passives[id]}</span>`; ui.loadout.appendChild(s); }
+  for(const id in player.weapons){ const lv=player.weapons[id], maxed=lv>=WDEF[id].max, evo=!!player.evo[id];
+    const s=document.createElement('div'); s.className='slot'+(evo?' evolved':(maxed?' max':''))+(poppedId===id?' pop':'');
+    const emoji=evo&&EVOLVE[id]?EVOLVE[id].emoji:WDEF[id].emoji;
+    s.innerHTML=`${emoji}<span class="pip">${evo?'★':lv}</span>`; ui.loadout.appendChild(s); }
+  for(const id in player.passives){ const lv=player.passives[id], maxed=lv>=PDEF[id].max;
+    const s=document.createElement('div'); s.className='slot passive'+(maxed?' max':'')+(poppedId===id?' pop':'');
+    s.innerHTML=`${PDEF[id].emoji}<span class="pip">${lv}</span>`; ui.loadout.appendChild(s); }
 }
 function toast(text,cls=''){ const m=document.createElement('div'); m.className='msg '+cls; m.textContent=text;
   ui.toast.appendChild(m); requestAnimationFrame(()=>m.classList.add('show'));
@@ -840,7 +866,7 @@ function resetGame(){
   if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; } player.flameCache=0;
   meteors.forEach(m=>{ scene.remove(m.m); scene.remove(m.tel); }); meteors.length=0;
   Object.assign(player,{ hp:100,maxhp:100,level:1,xp:0,xpNext:5,
-    moveSpeed:8.5,might:1,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,crit:0,amount:0,lifesteal:0,
+    moveSpeed:8.5,might:1,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,crit:0,amount:0,lifesteal:0,evo:{},
     hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0 });
   player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0 });
@@ -927,26 +953,30 @@ function update(dt){
     if(!player.down){   // weapons fire only while up
     // ---- weapons: timer-based ----
     for(const id of ['bolt','nova','spark','meteor','blade','chakram']){ if(!(id in player.weapons))continue;
-      weaponTimers[id]-=dt; if(weaponTimers[id]<=0){ const l=player.weapons[id]; weaponTimers[id]=WDEF[id].cd(l)*player.haste; WDEF[id].fire(l); } }
+      weaponTimers[id]-=dt; if(weaponTimers[id]<=0){ const l=player.weapons[id]; const ev=!!(player.evo&&player.evo[id]);
+        weaponTimers[id]=WDEF[id].cd(l)*player.haste*(ev?0.7:1); WDEF[id].fire(l,ev); } }   // evolved = faster too
 
     // ---- weapon: flame aura (continuous ring) ----
-    if(player.weapons.flame){ const l=player.weapons.flame; const R=WDEF.flame.radius(l)*player.area; const dps=WDEF.flame.dps(l);
+    if(player.weapons.flame){ const l=player.weapons.flame; const fev=!!(player.evo&&player.evo.flame);
+      const R=WDEF.flame.radius(l)*player.area*(fev?1.5:1); const dps=WDEF.flame.dps(l)*(fev?1.8:1);
       if(!player.flameMesh){ player.flameMesh=new THREE.Mesh(new THREE.RingGeometry(0.6,1,40),
           new THREE.MeshBasicMaterial({color:0xff6a1c,transparent:true,opacity:0.35,side:THREE.DoubleSide,depthWrite:false}));
         player.flameMesh.rotation.x=-Math.PI/2; scene.add(player.flameMesh); }
       const fm=player.flameMesh; fm.scale.setScalar(R); fm.position.set(player.group.position.x,0.2,player.group.position.z);
+      fm.material.color.setHex(fev?0xffcf3a:0xff6a1c);
       fm.material.opacity=0.25+0.12*Math.abs(Math.sin(game.time*4));
       for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-player.group.position.x,dz=e.group.position.z-player.group.position.z;
         const d=Math.hypot(dx,dz); if(d<R+e.scale*0.5){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
     } else if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; }
 
     // ---- weapon: orbit guard (continuous) ----
-    if(player.weapons.orb){ const l=player.weapons.orb; const want=WDEF.orb.count(l);
+    if(player.weapons.orb){ const l=player.weapons.orb; const oev=!!(player.evo&&player.evo.orb);
+      const want=oev?Math.min(10,WDEF.orb.count(l)+3):WDEF.orb.count(l);
       if(player.orbLevelCache!==want){ player.orbMeshes.forEach(o=>scene.remove(o)); player.orbMeshes=[];
         for(let i=0;i<want;i++){ const o=new THREE.Mesh(new THREE.SphereGeometry(0.34,12,12),
-          new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.2,roughness:0.2}));
+          new THREE.MeshStandardMaterial({color:oev?0xffcf3a:0x9af0ff,emissive:oev?0xff8a1c:0x46e0c8,emissiveIntensity:1.2,roughness:0.2}));
           o.castShadow=true; scene.add(o); player.orbMeshes.push(o); } player.orbLevelCache=want; }
-      const dps=WDEF.orb.dps(l); const R=ORB_R*player.area; game._orbA=(game._orbA||0)+dt*2.6;
+      const dps=WDEF.orb.dps(l)*(oev?1.7:1); const R=ORB_R*player.area; game._orbA=(game._orbA||0)+dt*2.6;
       player.orbMeshes.forEach((o,i)=>{ const a=game._orbA+i/want*TAU;
         o.position.set(player.group.position.x+Math.cos(a)*R,1.0,player.group.position.z+Math.sin(a)*R);
         for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-o.position.x,dz=e.group.position.z-o.position.z;
