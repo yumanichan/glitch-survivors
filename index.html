@@ -260,7 +260,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='14';
+const BUILD='15';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -636,14 +636,15 @@ function hurtEnemy(e,dmg,dx,dz,d,knock=1,crit=false){
   // critical hit: only on discrete hits (knock>0), not continuous DPS (orb/flame, knock=0)
   if(knock>0 && player.crit>0 && Math.random()<player.crit){ dmg*=2; crit=true; }
   // GUEST: don't apply locally — report damage to the host (authoritative), show local FX
+  // continuous auras (orb/flame) pass knock=0 and tiny per-frame damage — skip the number to avoid "0" spam
   if(MP.enabled&&MP.joined&&MP.role==='guest'&&e.id){
-    floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
+    if(knock>0) floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
     e.hurtFlash=0.12; if(d>0.001&&knock){ e.group.position.x+=dx/d*knock*0.4; e.group.position.z+=dz/d*knock*0.4; }
     mpAccumDmg(e.id,dmg); sfx.hit(); return;
   }
   e.hp-=dmg; e.hurtFlash=0.12;
   if(d>0.001&&knock){ e.group.position.x+=dx/d*knock; e.group.position.z+=dz/d*knock; }
-  floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
+  if(knock>0) floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
   if(e.hp<=0){ killEnemy(e); } else { sfx.hit(); }
 }
 function killEnemy(e){            // host & solo only (guest never owns enemy life)
@@ -1177,6 +1178,9 @@ function mpHeartbeat(){
   // keep my presence node alive — setInterval runs even when the tab is backgrounded (rAF/mpTick may be paused),
   // and this re-creates the node if a brief disconnect triggered the onDisconnect removal.
   try{ D.set(MP._meRef, mpMyPayload()); D.onDisconnect(MP._meRef).remove(); }catch(e){}
+  // host safety net: if still waiting in the lobby, poll the partner slot — start the moment a guest is there
+  // (covers cases where the onValue event was missed while the tab was briefly frozen).
+  if(game.state==='lobby'){ try{ D.get(D.ref(db,`rooms/${MP.roomId}/players/${MP.otherSlot}`)).then(s=>{ if(s.exists()&&game.state==='lobby') mpOnRemote(s.val()); }).catch(()=>{}); }catch(e){} }
   const alone = !(MP.remote && MP.remote.present);
   if(alone){
     MP._aloneTicks=(MP._aloneTicks||0)+1;
