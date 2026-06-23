@@ -398,7 +398,7 @@ function fade(name,dur=0.2){ if(!player.mixer||!player.actions[name])return; con
 // =================================================================
 const enemies=[]; const slimeGeo=new THREE.IcosahedronGeometry(0.7,1);
 const eyeGeo=new THREE.SphereGeometry(0.12,6,6);
-let enemyHpScale=1, enemyDmgScale=1;
+let enemyHpScale=1, enemyDmgScale=1, enemyIdCounter=0;
 function spawnSlime(x,z,tier,boss=false){
   const hue=boss?0.0:(tier>=3?0.0:tier===2?0.78:0.33);
   const col=new THREE.Color().setHSL(hue,0.7,boss?0.4:0.5);
@@ -410,7 +410,7 @@ function spawnSlime(x,z,tier,boss=false){
   const scale=boss?3.4:(0.75+tier*0.22);
   g.scale.setScalar(scale); g.position.set(x,0,z); scene.add(g);
   const baseHp=boss?900:(20+tier*16);
-  const e={ group:g,body,tier,boss,scale,
+  const e={ id:'e'+(enemyIdCounter++), group:g,body,tier,boss,scale,
     hp:baseHp*enemyHpScale, maxhp:baseHp*enemyHpScale,
     speed:boss?2.0:(2.0+tier*0.45), dmg:(boss?26:6+tier*4)*enemyDmgScale,
     xp:boss?40:(1+tier*2), hop:Math.random()*TAU, hurtFlash:0, atkCd:0, dead:false };
@@ -501,23 +501,36 @@ const weaponTimers={ bolt:0, nova:0, spark:0 };
 // =================================================================
 //  COMBAT helpers
 // =================================================================
+function deathFx(x,z,boss,color){
+  burst(new THREE.Vector3(x,0.7,z), color||0x9af0ff, boss?40:14, boss?2:1);
+  if(boss){ game.shake=Math.max(game.shake,0.9); flashScreen(); sfx.boss(); toast('💥 Behemoth purged!','gold'); }
+}
+function dropDeathShards(x,z,boss,xp){
+  if(boss){ for(let i=0;i<6;i++) dropShard(new THREE.Vector3(x+rand(-2,2),0,z+rand(-2,2)),8,0xc06bff); dropHeart(new THREE.Vector3(x,0,z)); }
+  else { dropShard(new THREE.Vector3(x,0,z), xp||2); if(Math.random()<0.04) dropHeart(new THREE.Vector3(x,0,z)); }
+}
 function hurtEnemy(e,dmg,dx,dz,d,knock=1,crit=false){
+  // GUEST: don't apply locally — report damage to the host (authoritative), show local FX
+  if(MP.enabled&&MP.joined&&MP.role==='guest'&&e.id){
+    floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
+    e.hurtFlash=0.12; if(d>0.001&&knock){ e.group.position.x+=dx/d*knock*0.4; e.group.position.z+=dz/d*knock*0.4; }
+    mpAccumDmg(e.id,dmg); sfx.hit(); return;
+  }
   e.hp-=dmg; e.hurtFlash=0.12;
   if(d>0.001&&knock){ e.group.position.x+=dx/d*knock; e.group.position.z+=dz/d*knock; }
   floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
   if(e.hp<=0){ killEnemy(e); } else { sfx.hit(); }
 }
-function killEnemy(e){
+function killEnemy(e){            // host & solo only (guest never owns enemy life)
   if(e.dead)return; e.dead=true;
-  burst(e.group.position.clone().add(new THREE.Vector3(0,0.7*e.scale,0)), e.body.material.color, e.boss?40:14, e.boss?2:1);
-  // drop XP shard(s)
-  if(e.boss){ for(let i=0;i<6;i++) dropShard(e.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), 8, 0xc06bff);
-    dropHeart(e.group.position.clone()); game.shake=Math.max(game.shake,0.9); flashScreen(); sfx.boss();
-    toast('💥 Behemoth purged!','gold'); }
-  else { dropShard(e.group.position.clone(), e.xp); if(Math.random()<0.04) dropHeart(e.group.position.clone()); }
+  const x=e.group.position.x, z=e.group.position.z, col=e.body.material.color;
+  const mp=MP.enabled&&MP.joined;
+  deathFx(x,z,e.boss,col);
+  if(!mp || MP.role==='host'){ dropDeathShards(x,z,e.boss,e.xp); }   // I get my own XP shards
+  if(mp && MP.role==='host'){ mpEmitDeath(e); }                       // tell the guest (they drop their own)
   scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1);
-  game.kills++; sfx.kill(); if(!MP.joined) ui.killval.textContent=game.kills;
-  if(MP.enabled&&MP.joined){ try{ MP._D.runTransaction(MP._killsRef,(v)=>(v||0)+1); }catch(e){} }
+  game.kills++; sfx.kill(); if(!mp) ui.killval.textContent=game.kills;
+  if(mp){ try{ MP._D.runTransaction(MP._killsRef,(v)=>(v||0)+1); }catch(err){} }
 }
 
 function flashScreen(){ const f=document.getElementById('flashfx'); f.style.opacity='0.7'; setTimeout(()=>f.style.opacity='0',90); }
@@ -742,14 +755,16 @@ function update(dt){
     enemyHpScale=1+game.time*0.035; enemyDmgScale=1+game.time*0.02;
     ui.clock.textContent=fmtTime(game.time);
 
-    game.spawnT-=dt;
-    if(game.spawnT<=0){ game.spawnT=Math.max(0.45,1.5-game.time*0.012);
-      const tier=clamp(1+Math.floor(game.time/45),1,3);
-      spawnRing(1+Math.floor(game.time/22),tier); }
+    if(mpAmHost()){   // only the host (or solo) spawns the swarm; the guest receives it over the network
+      game.spawnT-=dt;
+      if(game.spawnT<=0){ game.spawnT=Math.max(0.45,1.5-game.time*0.012);
+        const tier=clamp(1+Math.floor(game.time/45),1,3);
+        spawnRing(1+Math.floor(game.time/22),tier); }
 
-    game.bossT-=dt;
-    if(game.bossT<=0){ game.bossT=90; const p=player.group.position; const a=Math.random()*TAU;
-      spawnSlime(p.x+Math.cos(a)*36,p.z+Math.sin(a)*36,3,true); toast('⚠ A Glitch Behemoth approaches!','bad'); game.shake=Math.max(game.shake,0.5); }
+      game.bossT-=dt;
+      if(game.bossT<=0){ game.bossT=90; const p=player.group.position; const a=Math.random()*TAU;
+        spawnSlime(p.x+Math.cos(a)*36,p.z+Math.sin(a)*36,3,true); toast('⚠ A Glitch Behemoth approaches!','bad'); game.shake=Math.max(game.shake,0.5); }
+    }
 
     const mins=Math.floor(game.time/60);
     if(mins>game.milestone){ game.milestone=mins; toast(`⏱ Survived ${mins} minute${mins>1?'s':''}!`,'gold'); }
@@ -813,14 +828,29 @@ function update(dt){
 
   // ---- enemies ----
   if(game.state!=='dead'){
+  const guestMode = MP.enabled&&MP.joined&&MP.role==='guest';
+  const coop = MP.enabled&&MP.joined&&MP.role==='host'&&MP.remote&&MP.remote.present;
   for(const e of enemies){ if(e.dead)continue;
-    const dx=player.group.position.x-e.group.position.x, dz=player.group.position.z-e.group.position.z;
-    const d=Math.hypot(dx,dz); e.atkCd=Math.max(0,e.atkCd-dt); e.hurtFlash=Math.max(0,e.hurtFlash-dt);
-    if(game.state==='playing'&&player.alive&&d>0.01){ const sp=e.speed;
-      e.group.position.x+=dx/d*sp*dt; e.group.position.z+=dz/d*sp*dt; e.group.rotation.y=Math.atan2(dx,dz);
-      if(d<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; } }
-    // obstacle resolve (cheap)
-    e.hop+=dt*(7); const hop=Math.abs(Math.sin(e.hop));
+    e.atkCd=Math.max(0,e.atkCd-dt); e.hurtFlash=Math.max(0,e.hurtFlash-dt);
+    if(guestMode){
+      // positions are host-authoritative: smoothly chase the networked target
+      if(e.netTarget){ e.group.position.x+=(e.netTarget.x-e.group.position.x)*Math.min(1,dt*10);
+                       e.group.position.z+=(e.netTarget.z-e.group.position.z)*Math.min(1,dt*10); }
+      const dx=player.group.position.x-e.group.position.x, dz=player.group.position.z-e.group.position.z; const d=Math.hypot(dx,dz);
+      e.group.rotation.y=Math.atan2(dx,dz);
+      if(game.state==='playing'&&player.alive&&d<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; }
+    } else {
+      // host / solo simulation: chase the nearest player (host also considers the guest)
+      let tx=player.group.position.x, tz=player.group.position.z;
+      if(coop){ const gp=MP.remote.group.position;
+        if(((gp.x-e.group.position.x)**2+(gp.z-e.group.position.z)**2) < ((tx-e.group.position.x)**2+(tz-e.group.position.z)**2)){ tx=gp.x; tz=gp.z; } }
+      const dx=tx-e.group.position.x, dz=tz-e.group.position.z; const d=Math.hypot(dx,dz);
+      if(game.state==='playing'&&d>0.01){ const sp=e.speed;
+        e.group.position.x+=dx/d*sp*dt; e.group.position.z+=dz/d*sp*dt; e.group.rotation.y=Math.atan2(dx,dz); }
+      const dme=Math.hypot(player.group.position.x-e.group.position.x, player.group.position.z-e.group.position.z);
+      if(game.state==='playing'&&player.alive&&dme<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; }
+    }
+    e.hop+=dt*7; const hop=Math.abs(Math.sin(e.hop));
     e.group.position.y=hop*0.32*e.scale; e.body.scale.y=1-hop*0.16; e.body.scale.x=e.body.scale.z=1+hop*0.09;
     e.body.material.emissiveIntensity=e.hurtFlash>0?1.3:0.25;
   } }
@@ -889,7 +919,8 @@ const firebaseConfig = {
 };
 
 const MP = { enabled:false, db:null, _D:null, roomId:null, role:null, mySlot:null, otherSlot:null,
-  joined:false, remote:null, lastWrite:0, teamKills:0, sharedTime:0, _rematching:false };
+  joined:false, remote:null, lastWrite:0, teamKills:0, sharedTime:0, _rematching:false,
+  netMap:{}, dmgAccum:{}, _appliedRole:null };
 const mpbadge = document.getElementById('mpbadge');
 function setBadge(t,c){ if(!mpbadge)return; mpbadge.textContent=t; mpbadge.style.borderColor=c||'rgba(70,224,200,.4)'; mpbadge.style.display='block'; }
 
@@ -932,6 +963,16 @@ function mpEnterRoom(){
   MP._unsubOther = D.onValue(D.ref(db,`rooms/${MP.roomId}/players/${MP.otherSlot}`),(s)=>mpOnRemote(s.val()));
   D.onValue(MP._killsRef,(s)=>{ MP.teamKills=s.val()||0; if(MP.joined) ui.killval.textContent=MP.teamKills; });
   if(MP.role==='guest') D.onValue(MP._timeRef,(s)=>{ if(typeof s.val()==='number') MP.sharedTime=s.val(); });
+  // ---- shared enemies (host-authoritative) ----
+  if(MP._unsubDmg){MP._unsubDmg();MP._unsubDmg=null;}
+  if(MP._unsubEnem){MP._unsubEnem();MP._unsubEnem=null;}
+  if(MP._unsubDeaths){MP._unsubDeaths();MP._unsubDeaths=null;}
+  if(MP.role==='host'){
+    MP._unsubDmg=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/dmg`), mpOnDmgEvent);   // apply guest's damage
+  } else {
+    MP._unsubEnem=D.onValue(D.ref(db,`rooms/${MP.roomId}/enemies`),(s)=>mpReconcileEnemies(s.val()));  // render host's swarm
+    MP._unsubDeaths=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/deaths`), mpOnDeathEvent);             // FX + XP on kills
+  }
   setBadge('🟡 Waiting for a player…','#ffcf3a');
   clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,7000);
 }
@@ -1011,6 +1052,10 @@ function mpTick(dt){
   const now=performance.now();
   if(now-MP.lastWrite>80){ MP.lastWrite=now; try{ MP._D.update(MP._meRef, mpMyPayload()); }catch(e){} }
   if(MP.role==='host' && now-(MP._lastTW||0)>1000){ MP._lastTW=now; try{ MP._D.set(MP._timeRef, +game.time.toFixed(1)); }catch(e){} }
+  // shared-enemy sync
+  if(MP._appliedRole!==MP.role){ MP._appliedRole=MP.role; mpClearAllEnemies(); }   // wipe local list on role flip
+  if(MP.role==='host'){ if(now-(MP._lastEnem||0)>140){ MP._lastEnem=now; mpBroadcastEnemies(); } }
+  else { if(now-(MP._lastDmgFlush||0)>120){ MP._lastDmgFlush=now; mpFlushDmg(); } }
   const R=MP.remote;
   if(R && R.present){
     R.group.position.lerp(R.target, Math.min(1,dt*10));
@@ -1021,6 +1066,66 @@ function mpTick(dt){
     if(R.mixer) R.mixer.update(dt);
   }
 }
+
+// ===================== shared-enemy networking helpers =====================
+function mpAmHost(){ return !(MP.enabled&&MP.joined) || MP.role==='host'; }
+
+// GUEST → HOST: accumulate damage and flush in small batches (keeps bandwidth sane)
+function mpAccumDmg(id,d){ MP.dmgAccum[id]=(MP.dmgAccum[id]||0)+d; }
+function mpFlushDmg(){
+  const ids=Object.keys(MP.dmgAccum); if(!ids.length||!MP.joined) return;
+  const h={}; for(const id of ids) h[id]=Math.round(MP.dmgAccum[id]); MP.dmgAccum={};
+  try{ MP._D.push(MP._D.ref(MP.db,`rooms/${MP.roomId}/dmg`), {h}); }catch(e){}
+}
+// HOST consumes guest damage events
+function mpOnDmgEvent(snap){
+  const v=snap.val();
+  if(v&&v.h){ for(const id in v.h){ const e=enemies.find(x=>x.id===id&&!x.dead); if(e){ e.hp-=v.h[id]; e.hurtFlash=0.12; if(e.hp<=0) killEnemy(e); } } }
+  try{ MP._D.remove(snap.ref); }catch(e){}
+}
+
+// HOST → GUEST: broadcast a compact snapshot of the nearest enemies
+function mpBroadcastEnemies(){
+  if(!MP.joined||MP.role!=='host') return;
+  const p=player.group.position; const arr=[];
+  for(const e of enemies){ if(e.dead)continue; arr.push([(e.group.position.x-p.x)**2+(e.group.position.z-p.z)**2, e]); }
+  arr.sort((a,b)=>a[0]-b[0]); const out={}; const n=Math.min(48,arr.length);
+  for(let i=0;i<n;i++){ const e=arr[i][1]; out[e.id]={x:+e.group.position.x.toFixed(1),z:+e.group.position.z.toFixed(1),s:+e.scale.toFixed(2),b:e.boss?1:0}; }
+  try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/enemies`), out); }catch(e){}
+}
+// GUEST builds/updates/removes meshes to match the host's snapshot
+function mpMakeNetEnemy(id,d){
+  const boss=!!d.b; const scale=d.s||1; const tier=boss?3:clamp(Math.round((scale-0.75)/0.22),1,3);
+  const hue=boss?0:(tier>=3?0:tier===2?0.78:0.33); const col=new THREE.Color().setHSL(hue,0.7,boss?0.4:0.5);
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
+  body.castShadow=true; body.position.y=0.7; g.add(body);
+  const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
+  for(const sx of [-0.22,0.22]){ const ey=new THREE.Mesh(eyeGeo,eyeMat); ey.position.set(sx,0.85,0.55); g.add(ey); }
+  g.scale.setScalar(scale); g.position.set(d.x,0,d.z); scene.add(g);
+  const e={ id, group:g, body, scale, boss, net:true, dmg:(boss?26:6+tier*4),
+    hp:99999, hop:Math.random()*TAU, hurtFlash:0, atkCd:0, dead:false, netTarget:{x:d.x,z:d.z} };
+  enemies.push(e); MP.netMap[id]=e; return e;
+}
+function mpReconcileEnemies(data){
+  data=data||{};
+  for(const id in data){ const d=data[id]; const e=MP.netMap[id];
+    if(!e) mpMakeNetEnemy(id,d); else { e.netTarget.x=d.x; e.netTarget.z=d.z; } }
+  for(const id in MP.netMap){ if(!(id in data)){ const e=MP.netMap[id]; e.dead=true; scene.remove(e.group);
+    const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[id]; } }
+}
+// HOST emits a death so the guest gets FX + its own XP shard; GUEST consumes it
+function mpEmitDeath(e){
+  if(MP.role!=='host'||!(MP.remote&&MP.remote.present)) return;
+  try{ MP._D.push(MP._D.ref(MP.db,`rooms/${MP.roomId}/deaths`), {id:e.id, x:+e.group.position.x.toFixed(1), z:+e.group.position.z.toFixed(1), xp:e.xp||2, b:e.boss?1:0}); }catch(err){}
+}
+function mpOnDeathEvent(snap){
+  const d=snap.val();
+  if(d){ deathFx(d.x,d.z,!!d.b); dropDeathShards(d.x,d.z,!!d.b,d.xp);
+    if(d.id&&MP.netMap[d.id]){ const e=MP.netMap[d.id]; e.dead=true; scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[d.id]; } }
+  try{ MP._D.remove(snap.ref); }catch(e){}
+}
+function mpClearAllEnemies(){ for(const e of enemies) scene.remove(e.group); enemies.length=0; MP.netMap={}; }
 
 function animate(){ requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),0.05); update(dt); renderer.render(scene,camera); }
 animate();
