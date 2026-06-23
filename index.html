@@ -410,6 +410,22 @@ function lightningFx(pos,color=0xfff2a0){
   const l=new THREE.PointLight(color,8,12,2); l.position.set(pos.x,3,pos.z); scene.add(l);
   bolts.push({m,l,life:0,ttl:0.18});
 }
+// ☄️ meteor: falling rock with a ground telegraph that explodes for AoE on impact
+const meteors=[]; const meteorGeo=new THREE.IcosahedronGeometry(0.55,0);
+const meteorMat=new THREE.MeshStandardMaterial({color:0xff8a3c,emissive:0xff5a1c,emissiveIntensity:1.2,flatShading:true});
+function spawnMeteor(origin,dmg,rad){
+  const a=Math.random()*TAU, dist=rand(0,9); const tx=origin.x+Math.cos(a)*dist, tz=origin.z+Math.sin(a)*dist;
+  const m=new THREE.Mesh(meteorGeo,meteorMat); m.position.set(tx,15,tz); m.scale.setScalar(Math.max(0.7,rad*0.3)); scene.add(m);
+  const tel=new THREE.Mesh(new THREE.RingGeometry(rad*0.86,rad,28), new THREE.MeshBasicMaterial({color:0xff5a1c,transparent:true,opacity:0.5,side:THREE.DoubleSide,depthWrite:false}));
+  tel.rotation.x=-Math.PI/2; tel.position.set(tx,0.15,tz); scene.add(tel);
+  meteors.push({m,tel,tx,tz,dmg,rad,t:0});
+}
+// 🗡️ spin blade: instant melee sweep around the player (uses a shock ring visual)
+function bladeSpin(rad,dmg){
+  const p=player.group.position; shockRing(p,rad,0xffffff); sfx.hit();
+  for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-p.x,dz=e.group.position.z-p.z; const d=Math.hypot(dx,dz);
+    if(d<rad+e.scale*0.6){ hurtEnemy(e,dmg,dx,dz,d,0.9); } }
+}
 
 // =================================================================
 //  PLAYER
@@ -419,7 +435,8 @@ const player={
   hp:100,maxhp:100, level:1, xp:0, xpNext:5,
   moveSpeed:8.5, might:1, haste:1, area:1, magnet:5.5, growth:1, armor:0, regen:0,
   hurtCd:0, dashCd:0, dashT:0, lastDir:new THREE.Vector3(0,0,1),
-  weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, alive:true, down:false, downT:0, reviveP:0,
+  weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, flameMesh:null, flameCache:0,
+  crit:0, amount:0, lifesteal:0, alive:true, down:false, downT:0, reviveP:0,
 };
 scene.add(player.group);
 
@@ -511,7 +528,7 @@ function lightningStrike(e,dmg){ if(e.dead)return; lightningFx(e.group.position)
 const WDEF={
   bolt:{ name:'マジックボルト', emoji:'✨', max:8,
     cd:(l)=>Math.max(0.32,1.1-l*0.085),
-    fire(l){ const count=1+Math.floor(l/2); const dmg=(11+l*5)*player.might;
+    fire(l){ const count=1+Math.floor(l/2)+(player.amount||0); const dmg=(11+l*5)*player.might;
       const tg=nearestEnemies(count,62); const o=player.group.position;
       for(let i=0;i<count;i++){ const t=tg[i]||tg[0]; let dir;
         if(t){ dir=new THREE.Vector3(t.group.position.x-o.x,0,t.group.position.z-o.z).normalize(); }
@@ -527,25 +544,46 @@ const WDEF={
     desc:(l)=>`衝撃波 半径${(4.3+(l+1)*0.7).toFixed(1)}m · ダメージ${Math.round((15+(l+1)*8))}` },
   spark:{ name:'チェインスパーク', emoji:'⚡', max:8,
     cd:(l)=>Math.max(0.85,2.3-l*0.18),
-    fire(l){ const c=1+Math.floor((l+1)/2); const dmg=(19+l*9)*player.might;
+    fire(l){ const c=1+Math.floor((l+1)/2)+(player.amount||0); const dmg=(19+l*9)*player.might;
       nearestEnemies(c,42).forEach(e=>lightningStrike(e,dmg)); },
     desc:(l)=>`最大${1+Math.floor((l+2)/2)}体に連鎖 · ダメージ${Math.round((19+(l+1)*9))}` },
   orb:{ name:'オービットガード', emoji:'🛰️', max:8,
     count:(l)=>Math.min(7,2+Math.floor(l/2)), dps:(l)=>(22+l*11)*player.might,
     desc:(l)=>`周回オーブ ${Math.min(7,2+Math.floor((l+1)/2))}個 · 毎秒${Math.round((22+(l+1)*11))}` },
+  flame:{ name:'フレイムオーラ', emoji:'🔥', max:8,    // continuous aura (handled in update, like orb)
+    radius:(l)=>(2.2+l*0.32), dps:(l)=>(13+l*7)*player.might,
+    desc:(l)=>`周囲 ${(2.2+(l+1)*0.32).toFixed(1)}m に 毎秒${Math.round((13+(l+1)*7))}` },
+  meteor:{ name:'メテオ', emoji:'☄️', max:8,
+    cd:(l)=>Math.max(1.5,3.8-l*0.28),
+    fire(l){ const n=1+Math.floor(l/2)+(player.amount||0); const dmg=(30+l*12)*player.might; const rad=(3.0+l*0.28)*player.area;
+      for(let i=0;i<n;i++) spawnMeteor(player.group.position,dmg,rad); },
+    desc:(l)=>`隕石 ${1+Math.floor((l+1)/2)}発 · 範囲ダメージ${Math.round((30+(l+1)*12))}` },
+  blade:{ name:'スピンブレード', emoji:'🗡️', max:8,
+    cd:(l)=>Math.max(0.6,1.8-l*0.14),
+    fire(l){ bladeSpin((2.6+l*0.25)*player.area,(16+l*7)*player.might); },
+    desc:(l)=>`周囲 ${(2.6+(l+1)*0.25).toFixed(1)}m を薙ぐ · ダメージ${Math.round((16+(l+1)*7))}` },
+  chakram:{ name:'チャクラム', emoji:'🪃', max:8,
+    cd:(l)=>Math.max(0.7,2.0-l*0.15),
+    fire(l){ const n=3+Math.floor(l/2)+(player.amount||0); const dmg=(13+l*6)*player.might;
+      for(let i=0;i<n;i++){ const a=(game._chakA||0)+i/n*TAU; const dir=new THREE.Vector3(Math.sin(a),0,Math.cos(a)); spawnProjectile(player.group.position,dir,dmg,2+Math.floor(l/3)); }
+      game._chakA=(game._chakA||0)+0.6; sfx.shoot(); },
+    desc:(l)=>`${3+Math.floor((l+1)/2)}方向に貫通刃 · ダメージ${Math.round((13+(l+1)*6))}` },
 };
 const PDEF={
   might:{ name:'マイト', emoji:'💪', max:5, d:'全ダメージ +15%', apply(){player.might+=0.15;} },
   haste:{ name:'ヘイスト', emoji:'⏩', max:5, d:'クールダウン -10%', apply(){player.haste=Math.max(0.4,player.haste-0.10);} },
   boots:{ name:'俊足ブーツ', emoji:'🥾', max:5, d:'移動速度 +12%', apply(){player.moveSpeed*=1.12;} },
-  reso:{ name:'レゾナンス', emoji:'🌀', max:5, d:'範囲 +15%', apply(){player.area+=0.15;} },
+  reso:{ name:'レゾナンス', emoji:'🌀', max:5, d:'範囲 +25%', apply(){player.area+=0.25;} },
   vit:{ name:'バイタリティ', emoji:'❤️', max:5, d:'最大HP +25・40回復', apply(){player.maxhp+=25; player.hp=Math.min(player.maxhp,player.hp+40);} },
   mag:{ name:'マグネット', emoji:'🧲', max:5, d:'回収範囲 +45%', apply(){player.magnet*=1.45;} },
   wis:{ name:'ウィズダム', emoji:'📘', max:5, d:'経験値 +20%', apply(){player.growth+=0.20;} },
   regen:{ name:'リジェネ', emoji:'✚', max:5, d:'毎秒 HP+0.7', apply(){player.regen+=0.7;} },
   armor:{ name:'アーマー', emoji:'🛡️', max:5, d:'被ダメージ -2', apply(){player.armor+=2;} },
+  crit:{ name:'クリティカル', emoji:'💥', max:5, d:'確率でダメージ2倍', apply(){player.crit=(player.crit||0)+0.12;} },
+  multi:{ name:'マルチショット', emoji:'🔁', max:3, d:'弾数 +1', apply(){player.amount=(player.amount||0)+1;} },
+  leech:{ name:'ライフスティール', emoji:'🩸', max:5, d:'撃破で HP+1', apply(){player.lifesteal=(player.lifesteal||0)+1;} },
 };
-const weaponTimers={ bolt:0, nova:0, spark:0 };
+const weaponTimers={ bolt:0, nova:0, spark:0, meteor:0, blade:0, chakram:0 };
 
 // =================================================================
 //  COMBAT helpers
@@ -559,6 +597,8 @@ function dropDeathShards(x,z,boss,xp){
   else { dropShard(new THREE.Vector3(x,0,z), xp||2); if(Math.random()<0.04) dropHeart(new THREE.Vector3(x,0,z)); }
 }
 function hurtEnemy(e,dmg,dx,dz,d,knock=1,crit=false){
+  // critical hit: only on discrete hits (knock>0), not continuous DPS (orb/flame, knock=0)
+  if(knock>0 && player.crit>0 && Math.random()<player.crit){ dmg*=2; crit=true; }
   // GUEST: don't apply locally — report damage to the host (authoritative), show local FX
   if(MP.enabled&&MP.joined&&MP.role==='guest'&&e.id){
     floatText(e.group.position.clone().add(new THREE.Vector3(0,1.3*e.scale,0)), Math.round(dmg)+'', crit?'#ffe08a':'#ffffff', crit);
@@ -579,6 +619,7 @@ function killEnemy(e){            // host & solo only (guest never owns enemy li
   if(mp && MP.role==='host'){ mpEmitDeath(e); }                       // tell the guest (they drop their own)
   scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1);
   game.kills++; sfx.kill(); if(!mp) ui.killval.textContent=game.kills;
+  if(player.lifesteal&&player.alive&&!player.down){ player.hp=Math.min(player.maxhp,player.hp+player.lifesteal); refreshHUD(); }   // 🩸 lifesteal
   if(mp){ try{ MP._D.runTransaction(MP._killsRef,(v)=>(v||0)+1); }catch(err){} }
 }
 
@@ -661,7 +702,7 @@ function rollOptions(){
 function choose(idx){
   const opt=pendingPicks[idx];
   if(opt.type==='wup'){ player.weapons[opt.id]++; toast(`${WDEF[opt.id].emoji} ${WDEF[opt.id].name} Lv${player.weapons[opt.id]}`,'gold'); }
-  else if(opt.type==='wnew'){ player.weapons[opt.id]=1; if(opt.id==='bolt'||opt.id==='nova'||opt.id==='spark')weaponTimers[opt.id]=0; toast(`${WDEF[opt.id].emoji} ${WDEF[opt.id].name} 解放！`,'gold'); }
+  else if(opt.type==='wnew'){ player.weapons[opt.id]=1; if(opt.id in weaponTimers)weaponTimers[opt.id]=0; toast(`${WDEF[opt.id].emoji} ${WDEF[opt.id].name} 解放！`,'gold'); }
   else if(opt.type==='pas'){ PDEF[opt.id].apply(); player.passives[opt.id]=(player.passives[opt.id]||0)+1; toast(`${PDEF[opt.id].emoji} ${PDEF[opt.id].name}`,'gold'); }
   else { player.hp=Math.min(player.maxhp,player.hp+60); }
   consumeLevel(); renderLoadout(); refreshHUD();
@@ -796,12 +837,14 @@ function resetGame(){
   hearts.forEach(h=>scene.remove(h.m)); hearts.length=0;
   projectiles.forEach(p=>scene.remove(p.m)); projectiles.length=0;
   player.orbMeshes.forEach(o=>scene.remove(o)); player.orbMeshes.length=0; player.orbLevelCache=0;
+  if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; } player.flameCache=0;
+  meteors.forEach(m=>{ scene.remove(m.m); scene.remove(m.tel); }); meteors.length=0;
   Object.assign(player,{ hp:100,maxhp:100,level:1,xp:0,xpNext:5,
-    moveSpeed:8.5,might:1,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,
+    moveSpeed:8.5,might:1,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,crit:0,amount:0,lifesteal:0,
     hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0 });
   player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0 });
-  weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0;
+  weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0; weaponTimers.meteor=0; weaponTimers.blade=0; weaponTimers.chakram=0;
   if(player.actions['Death'])player.actions['Death'].stop(); player.current=null; fade('Idle',0);
   sfx.musicStart(); ui.killval.textContent=0; renderLoadout(); refreshHUD();
 }
@@ -883,8 +926,19 @@ function update(dt){
 
     if(!player.down){   // weapons fire only while up
     // ---- weapons: timer-based ----
-    for(const id of ['bolt','nova','spark']){ if(!(id in player.weapons))continue;
+    for(const id of ['bolt','nova','spark','meteor','blade','chakram']){ if(!(id in player.weapons))continue;
       weaponTimers[id]-=dt; if(weaponTimers[id]<=0){ const l=player.weapons[id]; weaponTimers[id]=WDEF[id].cd(l)*player.haste; WDEF[id].fire(l); } }
+
+    // ---- weapon: flame aura (continuous ring) ----
+    if(player.weapons.flame){ const l=player.weapons.flame; const R=WDEF.flame.radius(l)*player.area; const dps=WDEF.flame.dps(l);
+      if(!player.flameMesh){ player.flameMesh=new THREE.Mesh(new THREE.RingGeometry(0.6,1,40),
+          new THREE.MeshBasicMaterial({color:0xff6a1c,transparent:true,opacity:0.35,side:THREE.DoubleSide,depthWrite:false}));
+        player.flameMesh.rotation.x=-Math.PI/2; scene.add(player.flameMesh); }
+      const fm=player.flameMesh; fm.scale.setScalar(R); fm.position.set(player.group.position.x,0.2,player.group.position.z);
+      fm.material.opacity=0.25+0.12*Math.abs(Math.sin(game.time*4));
+      for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-player.group.position.x,dz=e.group.position.z-player.group.position.z;
+        const d=Math.hypot(dx,dz); if(d<R+e.scale*0.5){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
+    } else if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; }
 
     // ---- weapon: orbit guard (continuous) ----
     if(player.weapons.orb){ const l=player.weapons.orb; const want=WDEF.orb.count(l);
@@ -967,6 +1021,12 @@ function update(dt){
     r.m.scale.setScalar(0.5+k*r.maxR); r.m.material.opacity=0.85*(1-k); if(k>=1){ scene.remove(r.m); rings.splice(i,1); } }
   for(let i=bolts.length-1;i>=0;i--){ const b=bolts[i]; b.life+=dt; const k=b.life/b.ttl;
     b.m.material.opacity=0.95*(1-k); b.l.intensity=8*(1-k); if(k>=1){ scene.remove(b.m); scene.remove(b.l); bolts.splice(i,1); } }
+  // ☄️ meteors fall then explode
+  for(let i=meteors.length-1;i>=0;i--){ const me=meteors[i]; me.t+=dt; const k=Math.min(1,me.t/0.7);
+    me.m.position.y=15*(1-k)+0.5; me.m.rotation.x+=dt*6; me.m.rotation.y+=dt*5; me.tel.material.opacity=0.5*Math.sin(k*Math.PI)+0.12;
+    if(k>=1){ shockRing(new THREE.Vector3(me.tx,0,me.tz),me.rad,0xff7a3c); burst(new THREE.Vector3(me.tx,0.6,me.tz),0xff7a3c,18,1.3); game.shake=Math.max(game.shake,0.4); sfx.boom();
+      for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-me.tx,dz=e.group.position.z-me.tz; const d=Math.hypot(dx,dz); if(d<me.rad+e.scale*0.6){ hurtEnemy(e,me.dmg,dx,dz,d,1.2); } }
+      scene.remove(me.m); scene.remove(me.tel); meteors.splice(i,1); } }
   for(const c of crystals)c.rotation.y+=dt*0.6;
 
   if(player.mixer&&game.state!=='levelup')player.mixer.update(dt);
@@ -1215,6 +1275,7 @@ function mpEmitDeath(e){
 function mpOnDeathEvent(snap){
   const d=snap.val();
   if(d){ deathFx(d.x,d.z,!!d.b); dropDeathShards(d.x,d.z,!!d.b,d.xp);
+    if(player.lifesteal&&player.alive&&!player.down){ player.hp=Math.min(player.maxhp,player.hp+player.lifesteal); refreshHUD(); }   // 🩸 guest lifesteal
     if(d.id&&MP.netMap[d.id]){ const e=MP.netMap[d.id]; e.dead=true; scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[d.id]; } }
   try{ MP._D.remove(snap.ref); }catch(e){}
 }
