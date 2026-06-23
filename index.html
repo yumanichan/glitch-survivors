@@ -260,7 +260,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='15';
+const BUILD='16';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1159,16 +1159,18 @@ function mpEnterRoom(){
   if(MP._unsubDmg){MP._unsubDmg();MP._unsubDmg=null;}
   if(MP._unsubEnem){MP._unsubEnem();MP._unsubEnem=null;}
   if(MP._unsubDeaths){MP._unsubDeaths();MP._unsubDeaths=null;}
+  if(MP._unsubGo){MP._unsubGo();MP._unsubGo=null;}
+  const goRef=D.ref(db,'lobby/go/'+MP.roomId);   // persistent "match started" flag (no onDisconnect — survives device sleep)
   if(MP.role==='host'){
     MP._unsubDmg=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/dmg`), mpOnDmgEvent);   // apply guest's damage
+    MP._unsubGo=D.onValue(goRef,(s)=>{ if(s.val()===true && game.state==='lobby') startGame(); });  // start when a guest signals
   } else {
     MP._unsubEnem=D.onValue(D.ref(db,`rooms/${MP.roomId}/enemies`),(s)=>mpReconcileEnemies(s.val()));  // render host's swarm
     MP._unsubDeaths=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/deaths`), mpOnDeathEvent);             // FX + XP on kills
   }
   setBadge('🟡 相手を待っています…','#ffcf3a');
-  // 2nd player: joining a host's room *is* the pairing confirmation → start now (don't wait to "see" the host,
-  // whose node can vanish if their device sleeps). The host starts when it detects this guest (onValue p2).
-  if(MP.role==='guest' && game.state==='lobby') startGame();
+  // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
+  if(MP.role==='guest'){ try{ D.set(goRef,true); }catch(e){} if(game.state==='lobby') startGame(); }
   MP._aloneTicks=0; clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,3000);
 }
 
