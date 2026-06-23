@@ -143,7 +143,7 @@
 <div id="hud">
   <div id="xpbar"><div id="xpfill"></div></div>
   <div id="lvlbadge">LV 1</div>
-  <div id="timer"><div id="clock">00:00</div><div id="kills">☠ <b id="killval">0</b> purged</div></div>
+  <div id="timer"><div id="clock">00:00</div><div id="kills">☠ <b id="killval">0</b> 撃破</div></div>
   <div id="mpbadge">⚪ Solo</div>
 
   <div id="left">
@@ -172,28 +172,30 @@
   <div class="card" id="startcard">
     <div class="tag">A 3D Bullet-Heaven</div>
     <h1>Glitch Survivors</h1>
-    <p>The valley is overrun. You are <b>Unit&nbsp;7</b> — your weapons fire on their own.
-       <b>Just move and survive.</b> Vacuum up XP shards, level up, stack absurd powers, and see how long you last against the endless swarm.</p>
-    <div class="keys">
-      <div>🕹️ <b>WASD / Arrows</b> — move</div>
-      <div>🔫 weapons — <b>auto-fire</b></div>
-      <div>💨 <b>Space</b> — dash / dodge</div>
-      <div>💎 walk over <b>XP shards</b></div>
-      <div>🎥 <b>drag</b> — rotate cam</div>
-      <div>🔍 <b>wheel</b> — zoom</div>
-    </div>
-    <p style="font-size:13px;opacity:.7;margin-top:-4px">📱 <b>On iPad / touch:</b> hold your left thumb anywhere on the left to move (a joystick appears), drag the right side to look, pinch to zoom, tap <b>💨 DASH</b> to dodge.</p>
+    <p>谷はグリッチに侵食された。あなたは<b>Unit&nbsp;7</b>——武器は自動で発射。<b>動いて生き延びろ。</b>XPを集めてレベルアップし、力を重ねて、どこまで耐えられるか挑戦しよう。</p>
+
     <div id="loadbar"><div id="loadfill"></div></div>
-    <div id="loadtxt">Loading assets…</div>
-    <button class="btn" id="startbtn" style="display:none">▶  Survive the Glitch</button>
+    <div id="loadtxt">アセット読み込み中…</div>
+
+    <div id="menuButtons" style="display:none; flex-direction:column; gap:14px; align-items:center; margin-top:8px;">
+      <button class="btn" id="coopBtn">👥&nbsp; 2人で遊ぶ</button>
+      <button class="btn" id="soloBtn" style="background:linear-gradient(90deg,#8fa3ad,#b9ccd4); box-shadow:0 8px 30px rgba(140,160,170,.3)">🤖&nbsp; 1人で遊ぶ</button>
+      <div style="font-size:12px;opacity:.65;margin-top:6px">移動: WASD / 画面下のスティック ・ 武器は自動発射</div>
+    </div>
+
+    <div id="lobbyView" style="display:none; margin-top:8px;">
+      <div id="lobbyStatus" style="font-size:19px;font-weight:800;color:var(--accent);margin-bottom:8px">🟡 相手を探しています…</div>
+      <div style="font-size:13px;opacity:.7;margin-bottom:20px">もう1人が参加すると<b>同時にスタート</b>します<br><span style="opacity:.7">同じURLを別の端末で開いてください</span></div>
+      <button class="btn" id="cancelBtn" style="background:rgba(255,255,255,.12); box-shadow:none; color:#fff; font-size:14px; padding:10px 28px;">← メニューに戻る</button>
+    </div>
   </div>
 
   <div class="card hidden" id="deathcard" style="display:none">
-    <div class="tag">System Failure</div>
-    <h1 style="background:linear-gradient(90deg,#ff7a85,#ff4d5e);-webkit-background-clip:text;background-clip:text;">You Were Overrun</h1>
-    <p>Unit&nbsp;7 has powered down. The swarm rolls on…</p>
-    <div class="deathstat">Survived <b id="d_time">00:00</b> · Level <b id="d_lvl">1</b> · Purged <b id="d_kills">0</b></div>
-    <button class="btn" id="respawnbtn">↻  Reboot &amp; Try Again</button>
+    <div class="tag">システムダウン</div>
+    <h1 style="background:linear-gradient(90deg,#ff7a85,#ff4d5e);-webkit-background-clip:text;background-clip:text;">やられた…</h1>
+    <p>Unit&nbsp;7 は機能停止した。群れは止まらない…</p>
+    <div class="deathstat">生存 <b id="d_time">00:00</b> · レベル <b id="d_lvl">1</b> · 撃破 <b id="d_kills">0</b></div>
+    <button class="btn" id="respawnbtn">↻&nbsp; リブートして再挑戦</button>
   </div>
 </div>
 
@@ -496,7 +498,7 @@ const weaponTimers={ bolt:0, nova:0, spark:0 };
 // =================================================================
 function deathFx(x,z,boss,color){
   burst(new THREE.Vector3(x,0.7,z), color||0x9af0ff, boss?40:14, boss?2:1);
-  if(boss){ game.shake=Math.max(game.shake,0.9); flashScreen(); sfx.boss(); toast('💥 Behemoth purged!','gold'); }
+  if(boss){ game.shake=Math.max(game.shake,0.9); flashScreen(); sfx.boss(); toast('💥 ビヒモス撃破！','gold'); }
 }
 function dropDeathShards(x,z,boss,xp){
   if(boss){ for(let i=0;i<6;i++) dropShard(new THREE.Vector3(x+rand(-2,2),0,z+rand(-2,2)),8,0xc06bff); dropHeart(new THREE.Vector3(x,0,z)); }
@@ -661,7 +663,7 @@ function doDash(){ if(player.dashCd>0||!player.alive)return; player.dashT=0.16; 
 // =================================================================
 //  LOAD ASSET then enable start
 // =================================================================
-const loadfill=document.getElementById('loadfill'),loadtxt=document.getElementById('loadtxt'),startbtn=document.getElementById('startbtn');
+const loadfill=document.getElementById('loadfill'),loadtxt=document.getElementById('loadtxt');
 const MODEL_URL='https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
 new GLTFLoader().load(MODEL_URL,(gltf)=>{
   const model=gltf.scene; model.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.frustumCulled=false;} });
@@ -672,7 +674,9 @@ new GLTFLoader().load(MODEL_URL,(gltf)=>{
 },(xhr)=>{ if(xhr.total)loadfill.style.width=(xhr.loaded/xhr.total*100).toFixed(0)+'%'; },
 (err)=>{ console.warn('GLB failed, fallback',err); const fb=buildFallback(); player.group.add(fb); player.model=fb; ready('Offline — built-in robot'); });
 setTimeout(()=>{ if(!player.model){ const fb=buildFallback(); player.group.add(fb); player.model=fb; ready('Using built-in robot'); } },9000);
-function ready(msg){ loadfill.style.width='100%'; loadtxt.textContent=msg; startbtn.style.display='inline-block'; }
+function ready(msg){ loadfill.style.width='100%'; loadtxt.textContent=msg;
+  document.getElementById('menuButtons').style.display='flex';
+  setTimeout(()=>{ const lb=document.getElementById('loadbar'); if(lb)lb.style.display='none'; loadtxt.style.display='none'; },500); }
 
 // =================================================================
 //  GAME STATE / SPAWNER
@@ -680,11 +684,28 @@ function ready(msg){ loadfill.style.width='100%'; loadtxt.textContent=msg; start
 const game={ state:'menu', time:0, kills:0, shake:0, spawnT:0, bossT:90, milestone:0 };
 const overlay=document.getElementById('overlay'),startcard=document.getElementById('startcard'),deathcard=document.getElementById('deathcard');
 
-document.getElementById('startbtn').onclick=()=>{ sfx.init(); startGame(); };
+const menuButtons=document.getElementById('menuButtons'), lobbyView=document.getElementById('lobbyView'), lobbyStatus=document.getElementById('lobbyStatus');
+function showMenu(){ game.state='menu'; menuButtons.style.display='flex'; lobbyView.style.display='none';
+  overlay.classList.remove('hidden'); startcard.classList.remove('hidden'); startcard.style.display='block'; }
+document.getElementById('soloBtn').onclick=()=>{ sfx.init(); MP.enabled=false; startGame(); };
+document.getElementById('coopBtn').onclick=()=>{ sfx.init(); start2P(); };
+document.getElementById('cancelBtn').onclick=()=>{ mpLeave(); showMenu(); };
 document.getElementById('respawnbtn').onclick=()=>{ deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden'); resetGame(); };
 
+function start2P(){ menuButtons.style.display='none'; lobbyView.style.display='block'; game.state='lobby';
+  if(lobbyStatus)lobbyStatus.textContent='🟡 マッチング中…';
+  mpInit().then(()=>{ if(game.state==='lobby'&&lobbyStatus) lobbyStatus.textContent = MP.enabled?'🟡 相手を待っています…':'⚠ 接続できませんでした'; }); }
+
+// leave the multiplayer room cleanly (used by the lobby "back" button)
+function mpLeave(){ const D=MP._D;
+  try{ if(MP._unsubOther)MP._unsubOther(); if(MP._unsubDmg)MP._unsubDmg(); if(MP._unsubEnem)MP._unsubEnem(); if(MP._unsubDeaths)MP._unsubDeaths();
+    MP._unsubOther=MP._unsubDmg=MP._unsubEnem=MP._unsubDeaths=null;
+    if(D&&MP._meRef)D.remove(MP._meRef); }catch(e){}
+  clearInterval(MP._hb); MP.joined=false; MP.enabled=false; MP.role=null; MP._appliedRole=null;
+  if(MP.remote)mpDestroyRemote(); mpClearAllEnemies(); if(mpbadge)mpbadge.style.display='none'; }
+
 function startGame(){ startcard.classList.add('hidden'); startcard.style.display='none'; overlay.classList.add('hidden');
-  game.state='playing'; renderLoadout(); refreshHUD(); toast('Survive the swarm! ⚔','gold'); }
+  game.state='playing'; renderLoadout(); refreshHUD(); toast(MP.joined?'対戦開始！ ⚔':'サバイブ！ ⚔','gold'); }
 
 function resetGame(){
   enemies.forEach(e=>scene.remove(e.group)); enemies.length=0;
@@ -737,11 +758,11 @@ function update(dt){
 
       game.bossT-=dt;
       if(game.bossT<=0){ game.bossT=90; const p=player.group.position; const a=Math.random()*TAU;
-        spawnSlime(p.x+Math.cos(a)*36,p.z+Math.sin(a)*36,3,true); toast('⚠ A Glitch Behemoth approaches!','bad'); game.shake=Math.max(game.shake,0.5); }
+        spawnSlime(p.x+Math.cos(a)*36,p.z+Math.sin(a)*36,3,true); toast('⚠ グリッチ・ビヒモス出現！','bad'); game.shake=Math.max(game.shake,0.5); }
     }
 
     const mins=Math.floor(game.time/60);
-    if(mins>game.milestone){ game.milestone=mins; toast(`⏱ Survived ${mins} minute${mins>1?'s':''}!`,'gold'); }
+    if(mins>game.milestone){ game.milestone=mins; toast(`⏱ ${mins}分 生存！`,'gold'); }
 
     // ---- player movement ----
     let ix=0,iz=0;
@@ -905,7 +926,7 @@ async function mpInit(){
       import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js')
     ]);
     MP._D = D; MP.db = D.getDatabase(initializeApp(firebaseConfig)); MP.enabled = true;
-    setBadge('🟡 Finding a match…','#ffcf3a');
+    setBadge('🟡 マッチング中…','#ffcf3a');
     await mpMatchmake();
   }catch(e){ console.warn('Multiplayer unavailable, staying solo:',e); MP.enabled=false; }
 }
@@ -946,7 +967,7 @@ function mpEnterRoom(){
     MP._unsubEnem=D.onValue(D.ref(db,`rooms/${MP.roomId}/enemies`),(s)=>mpReconcileEnemies(s.val()));  // render host's swarm
     MP._unsubDeaths=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/deaths`), mpOnDeathEvent);             // FX + XP on kills
   }
-  setBadge('🟡 Waiting for a player…','#ffcf3a');
+  setBadge('🟡 相手を待っています…','#ffcf3a');
   clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,7000);
 }
 
@@ -980,16 +1001,17 @@ function mpMyPayload(){
 
 function mpOnRemote(d){
   if(!d){
-    if(MP.remote && MP.remote.present){ toast('👋 Partner left','bad'); MP.remote.present=false; MP.remote.group.visible=false; }
-    if(MP.joined) setBadge('🟡 Waiting for a player…','#ffcf3a');
+    if(MP.remote && MP.remote.present){ toast('👋 相手が退出','bad'); MP.remote.present=false; MP.remote.group.visible=false; }
+    if(MP.joined) setBadge('🟡 相手を待っています…','#ffcf3a');
     return;
   }
   if(!MP.remote) mpCreateRemote();
   const wasPresent=MP.remote.present;
   MP.remote.present=true; MP.remote.group.visible=true; MP.remote.data=d;
   MP.remote.target.set(d.x,0,d.z); MP.remote.ry=d.ry;
-  if(!wasPresent){ toast('🤝 Player 2 joined!','gold'); }
-  setBadge('🟢 2 players online','#46e0c8');
+  if(!wasPresent){ toast('🤝 相手が参加！','gold'); }
+  setBadge('🟢 2人 オンライン','#46e0c8');
+  if(game.state==='lobby'){ startGame(); }   // both players start together the instant the pair forms
   // update name/HP tag occasionally
   const tagTxt=`P2 · Lv ${d.lv||1} · ${d.hp}HP`;
   if(MP.remote._tagTxt!==tagTxt){ MP.remote._tagTxt=tagTxt; mpDrawTag(MP.remote,tagTxt,d.alive); }
@@ -1105,7 +1127,7 @@ animate();
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
 window.__rpg={player,enemies,shards,projectiles,game,WDEF,PDEF,openLevelUp,spawnRing,addXP,MP,update};
-mpInit();   // begin auto-matchmaking (no-op until a real Firebase config is pasted above)
+// matchmaking now starts only when the player picks "2人で遊ぶ" from the menu (see start2P)
 </script>
 </body>
 </html>
