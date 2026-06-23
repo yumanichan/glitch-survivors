@@ -45,6 +45,9 @@
   #clock { font-size:30px; font-weight:800; letter-spacing:1px; text-shadow:0 2px 10px rgba(0,0,0,.7); }
   #kills { font-size:13px; opacity:.8; margin-top:2px; }
   #kills b { color:var(--gold); }
+  #mpbadge { position:absolute; top:60px; left:50%; transform:translateX(-50%); font-size:12px; font-weight:700;
+             background:rgba(8,14,22,.82); border:1px solid rgba(70,224,200,.4); border-radius:12px; padding:3px 12px;
+             white-space:nowrap; display:none; }
 
   /* left HP + loadout */
   #left { position:absolute; top:34px; left:12px; }
@@ -148,6 +151,7 @@
   <div id="xpbar"><div id="xpfill"></div></div>
   <div id="lvlbadge">LV 1</div>
   <div id="timer"><div id="clock">00:00</div><div id="kills">☠ <b id="killval">0</b> purged</div></div>
+  <div id="mpbadge">⚪ Solo</div>
 
   <div id="left">
     <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div><div id="hptext">100 / 100</div></div></div>
@@ -210,6 +214,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 /* =================================================================
  *  GLITCH SURVIVORS — a 3D Vampire-Survivors-like
@@ -511,7 +516,8 @@ function killEnemy(e){
     toast('💥 Behemoth purged!','gold'); }
   else { dropShard(e.group.position.clone(), e.xp); if(Math.random()<0.04) dropHeart(e.group.position.clone()); }
   scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1);
-  game.kills++; sfx.kill(); ui.killval.textContent=game.kills;
+  game.kills++; sfx.kill(); if(!MP.joined) ui.killval.textContent=game.kills;
+  if(MP.enabled&&MP.joined){ try{ MP._D.runTransaction(MP._killsRef,(v)=>(v||0)+1); }catch(e){} }
 }
 
 function flashScreen(){ const f=document.getElementById('flashfx'); f.style.opacity='0.7'; setTimeout(()=>f.style.opacity='0',90); }
@@ -674,6 +680,7 @@ new GLTFLoader().load(MODEL_URL,(gltf)=>{
   const model=gltf.scene; model.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.frustumCulled=false;} });
   model.scale.setScalar(0.5); player.group.add(model); player.model=model; player.mixer=new THREE.AnimationMixer(model);
   gltf.animations.forEach(c=>{ const a=player.mixer.clipAction(c); player.actions[c.name]=a; });
+  player.clips=gltf.animations;   // kept for cloning the remote player's avatar
   fade('Idle',0); ready('Asset loaded: RobotExpressive.glb ✓');
 },(xhr)=>{ if(xhr.total)loadfill.style.width=(xhr.loaded/xhr.total*100).toFixed(0)+'%'; },
 (err)=>{ console.warn('GLB failed, fallback',err); const fb=buildFallback(); player.group.add(fb); player.model=fb; ready('Offline — built-in robot'); });
@@ -752,7 +759,7 @@ function update(dt){
     if(keys['KeyW']||keys['ArrowUp'])iz-=1; if(keys['KeyS']||keys['ArrowDown'])iz+=1;
     if(keys['KeyA']||keys['ArrowLeft'])ix-=1; if(keys['KeyD']||keys['ArrowRight'])ix+=1;
     if(joy.active){ ix+=joy.nx; iz+=joy.ny; }            // iPad/touch virtual joystick
-    const moving=(Math.abs(ix)>0.08||Math.abs(iz)>0.08);
+    const moving=(Math.abs(ix)>0.08||Math.abs(iz)>0.08); player._moving=moving;
     let speed=player.moveSpeed;
     player.dashT=Math.max(0,player.dashT-dt); player.dashCd=Math.max(0,player.dashCd-dt);
     if(player.dashT>0)speed*=3.4;
@@ -859,13 +866,168 @@ function update(dt){
     game.shake=Math.max(0,game.shake-dt*2.5); }
   camera.lookAt(camTarget);
   sun.position.set(p.x+40,70,p.z+30); sun.target.position.copy(p);
+
+  mpTick(dt);   // online multiplayer: write my state + interpolate remote player
+}
+
+/* =================================================================
+ *  ONLINE MULTIPLAYER  (Firebase Realtime Database, auto-matchmaking)
+ *  -----------------------------------------------------------------
+ *  >>> PASTE YOUR FIREBASE WEB CONFIG BELOW <<<  (5 values)
+ *  Until you do, the game runs exactly as single-player (no visible change).
+ *  NOTE: a Firebase WEB apiKey is meant to live in client code — it is NOT a
+ *  secret. Security comes from the database rules you set in the console.
+ * ================================================================= */
+const firebaseConfig = {
+  apiKey:            "AIzaSyBHO0dfY_4-y3RxH7o9crJkIS0P9-mqjIg",
+  authDomain:        "glitch-survivors.firebaseapp.com",
+  databaseURL:       "https://glitch-survivors-default-rtdb.firebaseio.com",
+  projectId:         "glitch-survivors",
+  storageBucket:     "glitch-survivors.firebasestorage.app",
+  messagingSenderId: "969554425781",
+  appId:             "1:969554425781:web:80ede7220179f5c1d90bfc"
+};
+
+const MP = { enabled:false, db:null, _D:null, roomId:null, role:null, mySlot:null, otherSlot:null,
+  joined:false, remote:null, lastWrite:0, teamKills:0, sharedTime:0, _rematching:false };
+const mpbadge = document.getElementById('mpbadge');
+function setBadge(t,c){ if(!mpbadge)return; mpbadge.textContent=t; mpbadge.style.borderColor=c||'rgba(70,224,200,.4)'; mpbadge.style.display='block'; }
+
+async function mpInit(){
+  if(!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('PASTE')) return;   // no config → stay solo, no badge
+  try{
+    const [{ initializeApp }, D] = await Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js')
+    ]);
+    MP._D = D; MP.db = D.getDatabase(initializeApp(firebaseConfig)); MP.enabled = true;
+    setBadge('🟡 Finding a match…','#ffcf3a');
+    await mpMatchmake();
+  }catch(e){ console.warn('Multiplayer unavailable, staying solo:',e); MP.enabled=false; }
+}
+
+async function mpMatchmake(){
+  const D=MP._D, db=MP.db;
+  const newId = D.push(D.child(D.ref(db),'rooms')).key;
+  let prevRoom=null;
+  const res = await D.runTransaction(D.ref(db,'lobby/openRoom'),(cur)=>{
+    const now=Date.now();
+    if(cur && cur.id && (now-(cur.ts||0)<25000)){ prevRoom=cur.id; return null; }  // fresh waiting room → I join it
+    return { id:newId, ts:now };                                                    // none → I host & advertise
+  });
+  const committed = res.snapshot.val();
+  if(committed && committed.id===newId){ MP.role='host';  MP.roomId=newId;          MP.mySlot='p1'; MP.otherSlot='p2'; }
+  else                                 { MP.role='guest'; MP.roomId=prevRoom||newId; MP.mySlot='p2'; MP.otherSlot='p1'; }
+  mpEnterRoom();
+}
+
+function mpEnterRoom(){
+  const D=MP._D, db=MP.db; MP.joined=true;
+  MP._meRef    = D.ref(db,`rooms/${MP.roomId}/players/${MP.mySlot}`);
+  MP._killsRef = D.ref(db,`rooms/${MP.roomId}/state/kills`);
+  MP._timeRef  = D.ref(db,`rooms/${MP.roomId}/state/time`);
+  D.set(MP._meRef, mpMyPayload());
+  D.onDisconnect(MP._meRef).remove();
+  if(MP._unsubOther) MP._unsubOther();
+  MP._unsubOther = D.onValue(D.ref(db,`rooms/${MP.roomId}/players/${MP.otherSlot}`),(s)=>mpOnRemote(s.val()));
+  D.onValue(MP._killsRef,(s)=>{ MP.teamKills=s.val()||0; if(MP.joined) ui.killval.textContent=MP.teamKills; });
+  if(MP.role==='guest') D.onValue(MP._timeRef,(s)=>{ if(typeof s.val()==='number') MP.sharedTime=s.val(); });
+  setBadge('🟡 Waiting for a player…','#ffcf3a');
+  clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,7000);
+}
+
+function mpHeartbeat(){
+  if(!MP.enabled||!MP.joined) return;
+  const D=MP._D, db=MP.db;
+  const alone = !(MP.remote && MP.remote.present);
+  if(alone){
+    if(MP.mySlot==='p2'){ mpResetAndRematch(); return; }            // host vanished → re-match (usually become a fresh host)
+    D.set(D.ref(db,'lobby/openRoom'), { id:MP.roomId, ts:Date.now() });  // host alone → keep advertising for a 2nd player
+  } else {
+    D.runTransaction(D.ref(db,'lobby/openRoom'),(cur)=> (cur&&cur.id===MP.roomId)?null:cur );  // paired → stop advertising
+  }
+}
+
+async function mpResetAndRematch(){
+  if(MP._rematching) return; MP._rematching=true;
+  const D=MP._D;
+  try{ if(MP._unsubOther) MP._unsubOther(); if(MP._meRef) D.remove(MP._meRef); }catch(e){}
+  clearInterval(MP._hb); MP.joined=false; mpDestroyRemote();
+  try{ await mpMatchmake(); }catch(e){ console.warn('rematch failed',e); }
+  MP._rematching=false;
+}
+
+function mpMyPayload(){
+  return { x:+player.group.position.x.toFixed(2), z:+player.group.position.z.toFixed(2),
+    ry:+player.group.rotation.y.toFixed(2),
+    anim: player.alive ? (player._moving?'Running':'Idle') : 'Death',
+    hp:Math.max(0,Math.round(player.hp)), mhp:player.maxhp, lv:player.level, alive:!!player.alive, t:Date.now() };
+}
+
+function mpOnRemote(d){
+  if(!d){
+    if(MP.remote && MP.remote.present){ toast('👋 Partner left','bad'); MP.remote.present=false; MP.remote.group.visible=false; }
+    if(MP.joined) setBadge('🟡 Waiting for a player…','#ffcf3a');
+    return;
+  }
+  if(!MP.remote) mpCreateRemote();
+  const wasPresent=MP.remote.present;
+  MP.remote.present=true; MP.remote.group.visible=true; MP.remote.data=d;
+  MP.remote.target.set(d.x,0,d.z); MP.remote.ry=d.ry;
+  if(!wasPresent){ toast('🤝 Player 2 joined!','gold'); }
+  setBadge('🟢 2 players online','#46e0c8');
+  // update name/HP tag occasionally
+  const tagTxt=`P2 · Lv ${d.lv||1} · ${d.hp}HP`;
+  if(MP.remote._tagTxt!==tagTxt){ MP.remote._tagTxt=tagTxt; mpDrawTag(MP.remote,tagTxt,d.alive); }
+}
+
+function mpCreateRemote(){
+  let model=null;
+  try{ if(player.clips && player.model) model=cloneSkeleton(player.model); }catch(e){ model=null; }
+  if(!model) model=buildFallback();
+  model.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false;
+    if(o.material){ o.material=o.material.clone(); if(o.material.color)o.material.color.lerp(new THREE.Color(0x35e0ff),0.5);
+      if('emissive' in o.material) o.material.emissive=new THREE.Color(0x0d3340); } } });
+  const g=new THREE.Group(); g.add(model); scene.add(g);
+  let mixer=null, actions={};
+  if(player.clips){ mixer=new THREE.AnimationMixer(model); player.clips.forEach(c=>actions[c.name]=mixer.clipAction(c)); }
+  const tagCv=document.createElement('canvas'); tagCv.width=256; tagCv.height=64;
+  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(tagCv),depthTest:false,transparent:true}));
+  tag.scale.set(4,1,1); tag.position.set(0,3.4,0); tag.renderOrder=998; g.add(tag);
+  MP.remote={ group:g, model, mixer, actions, current:null, lastAnim:null, target:new THREE.Vector3(), ry:0, present:true, data:{}, tag, tagCv };
+  mpDrawTag(MP.remote,'P2',true);
+}
+function mpDrawTag(R,txt,alive){
+  const cx=R.tagCv.getContext('2d'); cx.clearRect(0,0,256,64);
+  cx.font='bold 30px Segoe UI, sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  cx.lineWidth=6; cx.strokeStyle='rgba(0,0,0,.85)'; cx.strokeText(txt,128,32);
+  cx.fillStyle=alive?'#7af7ff':'#ff9aa3'; cx.fillText(txt,128,32);
+  R.tag.material.map.needsUpdate=true;
+}
+function mpDestroyRemote(){ if(MP.remote){ scene.remove(MP.remote.group); MP.remote=null; } }
+
+function mpTick(dt){
+  if(!MP.enabled||!MP.joined) return;
+  const now=performance.now();
+  if(now-MP.lastWrite>80){ MP.lastWrite=now; try{ MP._D.update(MP._meRef, mpMyPayload()); }catch(e){} }
+  if(MP.role==='host' && now-(MP._lastTW||0)>1000){ MP._lastTW=now; try{ MP._D.set(MP._timeRef, +game.time.toFixed(1)); }catch(e){} }
+  const R=MP.remote;
+  if(R && R.present){
+    R.group.position.lerp(R.target, Math.min(1,dt*10));
+    let df=R.ry-R.group.rotation.y; while(df>Math.PI)df-=TAU; while(df<-Math.PI)df+=TAU;
+    R.group.rotation.y+=df*Math.min(1,dt*10);
+    const an=R.data.anim||'Idle';
+    if(R.mixer && R.actions[an] && R.lastAnim!==an){ if(R.current)R.current.fadeOut(0.2); R.actions[an].reset().fadeIn(0.2).play(); R.current=R.actions[an]; R.lastAnim=an; }
+    if(R.mixer) R.mixer.update(dt);
+  }
 }
 
 function animate(){ requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),0.05); update(dt); renderer.render(scene,camera); }
 animate();
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
-window.__rpg={player,enemies,shards,projectiles,game,WDEF,PDEF,openLevelUp,spawnRing,addXP};
+window.__rpg={player,enemies,shards,projectiles,game,WDEF,PDEF,openLevelUp,spawnRing,addXP,MP,update};
+mpInit();   // begin auto-matchmaking (no-op until a real Firebase config is pasted above)
 </script>
 </body>
 </html>
