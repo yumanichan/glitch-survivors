@@ -135,6 +135,19 @@
   #flashfx { position:fixed; inset:0; z-index:18; pointer-events:none; background:#fff; opacity:0; transition:opacity .12s; }
 
   @media (max-width:560px){ #controls{ display:none; } .keys{ grid-template-columns:1fr; } #hpwrap{ width:150px; } }
+
+  /* co-op downed banner */
+  #downed { position:fixed; left:50%; top:30%; transform:translateX(-50%); z-index:16; display:none;
+            text-align:center; pointer-events:none; background:rgba(40,8,12,.78); border:2px solid var(--hp);
+            border-radius:14px; padding:14px 26px; box-shadow:0 0 30px rgba(255,77,94,.4); }
+  #downed .dtitle { font-size:26px; font-weight:800; color:#ff8a93; text-shadow:0 2px 8px #000; }
+  #downed .dsub { font-size:13px; opacity:.9; margin-top:4px; } #downed .dsub b { color:#fff; }
+  #downed .dbar { width:200px; height:10px; border-radius:5px; background:rgba(255,255,255,.15); margin:10px auto 0; overflow:hidden; }
+  #downed #dfill { height:100%; width:0%; background:linear-gradient(90deg,#7af7ff,var(--accent)); transition:width .1s linear; }
+  /* mute toggle */
+  #muteBtn { position:fixed; top:20px; right:14px; z-index:16; width:38px; height:38px; border-radius:10px;
+             background:rgba(8,14,22,.7); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:17px;
+             cursor:pointer; pointer-events:auto; -webkit-tap-highlight-color:transparent; }
 </style>
 </head>
 <body>
@@ -146,6 +159,15 @@
 <!-- on-screen touch controls (appear automatically on touch devices) -->
 <div id="joybase"><div id="joythumb"></div></div>
 <div id="touchhint">スティックで移動</div>
+
+<!-- co-op: downed / waiting-for-revive banner -->
+<div id="downed">
+  <div class="dtitle">⚠ ダウン！</div>
+  <div class="dsub">相方が近づくと復活 · あと <b id="dbleed">14</b> 秒</div>
+  <div class="dbar"><div id="dfill"></div></div>
+</div>
+
+<button id="muteBtn" title="サウンド切替">🔊</button>
 
 <div id="hud">
   <div id="xpbar"><div id="xpfill"></div></div>
@@ -313,9 +335,10 @@ for(let i=0;i<70;i++){ const a=i/70*TAU; makeTree(Math.cos(a)*(WORLD-3),Math.sin
 //  AUDIO — tiny procedural WebAudio synth (lots of juice, no files)
 // =================================================================
 const sfx=(function(){
-  let ctx,master; const last={};
+  let ctx,master,mgain,mt=null,mstep=0,muted=false; const last={};
   function init(){ if(ctx)return; const AC=window.AudioContext||window.webkitAudioContext; ctx=new AC();
-    master=ctx.createGain(); master.gain.value=0.16; master.connect(ctx.destination); }
+    master=ctx.createGain(); master.gain.value=0.16; master.connect(ctx.destination);
+    mgain=ctx.createGain(); mgain.gain.value=0.05; mgain.connect(ctx.destination); }
   function tone(f,dur,type,vol,slideTo,t0){
     if(!ctx)return; const o=ctx.createOscillator(),g=ctx.createGain();
     o.type=type||'square'; o.frequency.setValueAtTime(f,t0||ctx.currentTime);
@@ -325,6 +348,17 @@ const sfx=(function(){
     o.connect(g); g.connect(master); o.start(t0||ctx.currentTime); o.stop((t0||ctx.currentTime)+dur+0.02);
   }
   function gate(name,ms){ const t=performance.now(); if(last[name]&&t-last[name]<ms)return false; last[name]=t; return true; }
+  // ---- background music: looping minor chord arpeggio (Am F C G) ----
+  function mtone(f,dur,type,vol){ if(!ctx)return; const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=type; o.frequency.value=f; g.gain.setValueAtTime(vol,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+dur); o.connect(g); g.connect(mgain);
+    o.start(); o.stop(ctx.currentTime+dur+0.02); }
+  const CH=[ [110.00,[0,3,7,12]], [87.31,[0,4,7,11]], [130.81,[0,4,7,11]], [98.00,[0,4,7,10]] ];
+  function mtick(){ if(!ctx)return; const bar=(mstep>>2)%4, c=CH[bar], s=mstep%4;
+    if(s===0) mtone(c[0]/2,0.55,'sine',0.55);                                    // bass
+    const off=c[1][s%c[1].length]; mtone(c[0]*Math.pow(2,off/12),0.26,'triangle',0.26);   // arpeggio
+    if(s===2) mtone(c[0]*Math.pow(2,(off+12)/12),0.16,'triangle',0.10);          // sparkle
+    mstep++; }
   return {
     init,
     shoot(){ if(gate('shoot',55)) tone(620,0.07,'square',0.25,880); },
@@ -336,6 +370,9 @@ const sfx=(function(){
     level(){ const n=ctx?ctx.currentTime:0; [523,659,784,1047].forEach((f,i)=>tone(f,0.16,'square',0.3,f*1.01,n+i*0.07)); },
     hurt(){ tone(180,0.18,'sawtooth',0.3,60); },
     boss(){ tone(90,0.6,'sawtooth',0.45,45); tone(60,0.7,'sine',0.4,30); },
+    musicStart(){ if(mt||!ctx)return; mstep=0; mt=setInterval(mtick,230); },
+    musicStop(){ if(mt){ clearInterval(mt); mt=null; } },
+    toggleMute(){ muted=!muted; if(master)master.gain.value=muted?0:0.16; if(mgain)mgain.gain.value=muted?0:0.05; return muted; },
   };
 })();
 
@@ -382,7 +419,7 @@ const player={
   hp:100,maxhp:100, level:1, xp:0, xpNext:5,
   moveSpeed:8.5, might:1, haste:1, area:1, magnet:5.5, growth:1, armor:0, regen:0,
   hurtCd:0, dashCd:0, dashT:0, lastDir:new THREE.Vector3(0,0,1),
-  weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, alive:true,
+  weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, alive:true, down:false, downT:0, reviveP:0,
 };
 scene.add(player.group);
 
@@ -548,14 +585,41 @@ function killEnemy(e){            // host & solo only (guest never owns enemy li
 function flashScreen(){ const f=document.getElementById('flashfx'); f.style.opacity='0.7'; setTimeout(()=>f.style.opacity='0',90); }
 
 function hurtPlayer(n){
-  if(!player.alive||player.hurtCd>0)return;
+  if(!player.alive||player.down||player.hurtCd>0)return;   // invulnerable while downed (bleed-out timer handles it)
   const dmg=Math.max(1,n-player.armor);
   player.hp-=dmg; player.hurtCd=0.5; sfx.hurt();
   document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
   floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78');
   game.shake=Math.max(game.shake,0.25);
-  if(player.hp<=0){ player.hp=0; die(); }
+  if(player.hp<=0){ player.hp=0; if(MP.joined) goDown(); else die(); }   // co-op: go down instead of instant game-over
   refreshHUD();
+}
+
+const REVIVE_TIME=3;   // seconds a partner must stay close to revive you
+function goDown(){
+  player.down=true; player.hp=0; player.downT=14; player.reviveP=0;
+  fade('Death',0.2); sfx.hurt(); game.shake=Math.max(game.shake,0.4);
+  const d=document.getElementById('downed'); if(d)d.style.display='block';
+  refreshHUD();
+}
+function reviveSelf(){
+  player.down=false; player.reviveP=0; player.hp=Math.round(player.maxhp*0.45); player.hurtCd=1.4;
+  const d=document.getElementById('downed'); if(d)d.style.display='none';
+  fade('Idle',0.2); sfx.level(); toast('💚 復活！','gold'); refreshHUD();
+}
+function updateDowned(dt){
+  player.downT-=dt;
+  const R=MP.remote;
+  const helperUp = MP.joined && R && R.present && R.data && R.data.alive && !R.data.down;
+  let near=false;
+  if(helperUp){ near = Math.hypot(R.group.position.x-player.group.position.x, R.group.position.z-player.group.position.z) < 3.2; }
+  if(near) player.reviveP=Math.min(1, player.reviveP + dt/REVIVE_TIME);
+  else      player.reviveP=Math.max(0, player.reviveP - dt*0.4);
+  // UI
+  const bf=document.getElementById('dfill'); if(bf)bf.style.width=(player.reviveP*100)+'%';
+  const bl=document.getElementById('dbleed'); if(bl)bl.textContent=Math.max(0,Math.ceil(player.downT));
+  if(player.reviveP>=1){ reviveSelf(); return; }
+  if(player.downT<=0){ const d=document.getElementById('downed'); if(d)d.style.display='none'; die(); }
 }
 
 // =================================================================
@@ -707,6 +771,7 @@ function showMenu(){ game.state='menu'; menuButtons.style.display='flex'; lobbyV
 document.getElementById('soloBtn').onclick=()=>{ sfx.init(); MP.enabled=false; startGame(); };
 document.getElementById('coopBtn').onclick=()=>{ sfx.init(); start2P(); };
 document.getElementById('cancelBtn').onclick=()=>{ mpLeave(); showMenu(); };
+document.getElementById('muteBtn').onclick=()=>{ sfx.init(); const m=sfx.toggleMute(); document.getElementById('muteBtn').textContent=m?'🔇':'🔊'; };
 document.getElementById('respawnbtn').onclick=()=>{ deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden'); resetGame(); };
 
 function start2P(){ menuButtons.style.display='none'; lobbyView.style.display='block'; game.state='lobby';
@@ -722,7 +787,8 @@ function mpLeave(){ const D=MP._D;
   if(MP.remote)mpDestroyRemote(); mpClearAllEnemies(); if(mpbadge)mpbadge.style.display='none'; }
 
 function startGame(){ startcard.classList.add('hidden'); startcard.style.display='none'; overlay.classList.add('hidden');
-  game.state='playing'; renderLoadout(); refreshHUD(); toast(MP.joined?'対戦開始！ ⚔':'サバイブ！ ⚔','gold'); }
+  game.state='playing'; player.down=false; document.getElementById('downed').style.display='none';
+  sfx.musicStart(); renderLoadout(); refreshHUD(); toast(MP.joined?'対戦開始！ ⚔':'サバイブ！ ⚔','gold'); }
 
 function resetGame(){
   enemies.forEach(e=>scene.remove(e.group)); enemies.length=0;
@@ -732,15 +798,15 @@ function resetGame(){
   player.orbMeshes.forEach(o=>scene.remove(o)); player.orbMeshes.length=0; player.orbLevelCache=0;
   Object.assign(player,{ hp:100,maxhp:100,level:1,xp:0,xpNext:5,
     moveSpeed:8.5,might:1,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,
-    hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true });
-  player.group.position.set(0,0,0);
+    hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0 });
+  player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0 });
   weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0;
   if(player.actions['Death'])player.actions['Death'].stop(); player.current=null; fade('Idle',0);
-  ui.killval.textContent=0; renderLoadout(); refreshHUD();
+  sfx.musicStart(); ui.killval.textContent=0; renderLoadout(); refreshHUD();
 }
 
-function die(){ player.alive=false; game.state='dead'; fade('Death',0.2);
+function die(){ player.alive=false; player.down=false; game.state='dead'; fade('Death',0.2); sfx.musicStop();
   document.getElementById('d_time').textContent=fmtTime(game.time);
   document.getElementById('d_lvl').textContent=player.level;
   document.getElementById('d_kills').textContent=game.kills;
@@ -792,7 +858,7 @@ function update(dt){
     if(keys['KeyW']||keys['ArrowUp'])iz-=1; if(keys['KeyS']||keys['ArrowDown'])iz+=1;
     if(keys['KeyA']||keys['ArrowLeft'])ix-=1; if(keys['KeyD']||keys['ArrowRight'])ix+=1;
     if(joy.active){ ix+=joy.nx; iz+=joy.ny; }            // iPad/touch virtual joystick
-    const moving=(Math.abs(ix)>0.08||Math.abs(iz)>0.08); player._moving=moving;
+    const moving=(Math.abs(ix)>0.08||Math.abs(iz)>0.08) && !player.down; player._moving=moving;
     let speed=player.moveSpeed;
     player.dashT=Math.max(0,player.dashT-dt); player.dashCd=Math.max(0,player.dashCd-dt);
     if(player.dashT>0)speed*=3.4;
@@ -815,6 +881,7 @@ function update(dt){
     player.hurtCd=Math.max(0,player.hurtCd-dt);
     if(player.regen>0&&player.hp<player.maxhp){ player.hp=Math.min(player.maxhp,player.hp+player.regen*dt); refreshHUD(); }
 
+    if(!player.down){   // weapons fire only while up
     // ---- weapons: timer-based ----
     for(const id of ['bolt','nova','spark']){ if(!(id in player.weapons))continue;
       weaponTimers[id]-=dt; if(weaponTimers[id]<=0){ const l=player.weapons[id]; weaponTimers[id]=WDEF[id].cd(l)*player.haste; WDEF[id].fire(l); } }
@@ -831,6 +898,9 @@ function update(dt){
         for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-o.position.x,dz=e.group.position.z-o.position.z;
           const d=Math.hypot(dx,dz); if(d<0.55+e.scale*0.6){ hurtEnemy(e,dps*dt,dx,dz,d,0); } } });
     }
+    }   // end: weapons (skipped while downed)
+
+    if(player.down) updateDowned(dt);   // co-op: bleed-out timer + partner revive
   }
 
   // ---- projectiles ----
@@ -1018,8 +1088,9 @@ async function mpResetAndRematch(){
 function mpMyPayload(){
   return { x:+player.group.position.x.toFixed(2), z:+player.group.position.z.toFixed(2),
     ry:+player.group.rotation.y.toFixed(2),
-    anim: player.alive ? (player._moving?'Running':'Idle') : 'Death',
-    hp:Math.max(0,Math.round(player.hp)), mhp:player.maxhp, lv:player.level, alive:!!player.alive, t:Date.now() };
+    anim: (player.alive&&!player.down) ? (player._moving?'Running':'Idle') : 'Death',
+    hp:Math.max(0,Math.round(player.hp)), mhp:player.maxhp, lv:player.level, alive:!!player.alive,
+    down:!!player.down, rp:+(player.reviveP||0).toFixed(2), t:Date.now() };
 }
 
 function mpOnRemote(d){
@@ -1035,9 +1106,12 @@ function mpOnRemote(d){
   if(!wasPresent){ toast('🤝 相手が参加！','gold'); }
   setBadge('🟢 2人 オンライン','#46e0c8');
   if(game.state==='lobby'){ startGame(); }   // both players start together the instant the pair forms
-  // update name/HP tag occasionally
-  const tagTxt=`P2 · Lv ${d.lv||1} · ${d.hp}HP`;
-  if(MP.remote._tagTxt!==tagTxt){ MP.remote._tagTxt=tagTxt; mpDrawTag(MP.remote,tagTxt,d.alive); }
+  // partner went down → alert the rescuer once
+  if(d.down && !MP._partnerWasDown){ toast('🆘 相方ダウン！近づいて蘇生','bad'); }
+  MP._partnerWasDown=!!d.down;
+  // name/HP tag (shows revive % while the partner is down)
+  const tagTxt = d.down ? `🆘 ダウン ${Math.round((d.rp||0)*100)}%` : `P2 · Lv ${d.lv||1} · ${d.hp}HP`;
+  if(MP.remote._tagTxt!==tagTxt){ MP.remote._tagTxt=tagTxt; mpDrawTag(MP.remote,tagTxt, d.alive&&!d.down); }
 }
 
 function mpCreateRemote(){
