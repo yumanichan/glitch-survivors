@@ -105,19 +105,27 @@
                 background:linear-gradient(90deg,#ffe08a,#ffcf3a); -webkit-background-clip:text; background-clip:text; color:transparent;
                 text-shadow:0 0 30px rgba(255,207,58,.3); }
   #levelup .sub { font-size:13px; letter-spacing:2px; text-transform:uppercase; opacity:.6; margin-bottom:26px; }
-  #cards { display:flex; gap:18px; flex-wrap:wrap; justify-content:center; padding:0 16px; }
-  .ucard { pointer-events:auto; cursor:pointer; width:215px; min-height:200px; padding:22px 18px;
+  #cards { display:flex; gap:10px; flex-wrap:nowrap; justify-content:center; align-items:stretch;
+           width:100%; max-width:720px; padding:0 8px; box-sizing:border-box; }
+  .ucard { pointer-events:auto; cursor:pointer; flex:1 1 0; min-width:0; max-width:220px; min-height:178px; padding:18px 10px;
            background:linear-gradient(160deg,rgba(20,32,44,.95),rgba(12,20,30,.95));
-           border:1.5px solid rgba(70,224,200,.35); border-radius:16px; text-align:center;
-           transition:transform .14s ease, border-color .14s, box-shadow .14s; display:flex; flex-direction:column; align-items:center; }
-  .ucard:hover { transform:translateY(-8px) scale(1.04); border-color:var(--accent); box-shadow:0 14px 40px rgba(70,224,200,.35); }
+           border:1.5px solid rgba(70,224,200,.35); border-radius:14px; text-align:center;
+           transition:transform .14s ease, border-color .14s, box-shadow .14s; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .ucard:hover { transform:translateY(-6px) scale(1.03); border-color:var(--accent); box-shadow:0 14px 40px rgba(70,224,200,.35); }
   .ucard.pas { border-color:rgba(255,207,58,.35); }
   .ucard.pas:hover { border-color:var(--gold); box-shadow:0 14px 40px rgba(255,207,58,.3); }
-  .ucard .ic { font-size:46px; margin-bottom:10px; filter:drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
-  .ucard .nm { font-size:18px; font-weight:800; margin-bottom:3px; }
-  .ucard .lv { font-size:11px; letter-spacing:1px; text-transform:uppercase; opacity:.7; margin-bottom:12px; }
+  .ucard .ic { font-size:40px; margin-bottom:8px; filter:drop-shadow(0 4px 10px rgba(0,0,0,.5)); line-height:1; }
+  .ucard .nm { font-size:16px; font-weight:800; margin-bottom:3px; }
+  .ucard .lv { font-size:10px; letter-spacing:1px; text-transform:uppercase; opacity:.7; margin-bottom:10px; }
   .ucard .lv .new { color:var(--accent); font-weight:800; }
-  .ucard .ds { font-size:13px; line-height:1.5; opacity:.88; }
+  .ucard .ds { font-size:12.5px; line-height:1.45; opacity:.88; }
+  @media (max-width:430px){
+    #cards { gap:7px; padding:0 6px; }
+    .ucard { padding:14px 7px; min-height:160px; border-radius:12px; }
+    .ucard .ic { font-size:32px; margin-bottom:6px; }
+    .ucard .nm { font-size:14px; }
+    .ucard .ds { font-size:11.5px; line-height:1.4; }
+  }
 
   #hurt { position:fixed; inset:0; z-index:15; pointer-events:none;
           box-shadow:inset 0 0 140px rgba(255,40,60,0); transition:box-shadow .1s; }
