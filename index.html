@@ -1153,6 +1153,9 @@ function mpEnterRoom(){
     MP._unsubDeaths=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/deaths`), mpOnDeathEvent);             // FX + XP on kills
   }
   setBadge('🟡 相手を待っています…','#ffcf3a');
+  // 2nd player: joining a host's room *is* the pairing confirmation → start now (don't wait to "see" the host,
+  // whose node can vanish if their device sleeps). The host starts when it detects this guest (onValue p2).
+  if(MP.role==='guest' && game.state==='lobby') startGame();
   MP._aloneTicks=0; clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,3000);
 }
 
