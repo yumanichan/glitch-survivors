@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
 <title>Glitch Survivors — 3D Bullet-Heaven</title>
 <style>
   :root { --accent:#46e0c8; --hp:#ff4d5e; --xp:#5bd0ff; --gold:#ffcf3a; }
@@ -256,6 +258,16 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 const rand=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
+
+// ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
+const BUILD='14';
+(function(){ try{
+  if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
+  fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
+    const m=t.match(/const BUILD='([^']+)'/);
+    if(m && m[1]!==BUILD){ location.replace(location.pathname+'?v='+m[1]); }  // newer build live → reload to it
+  }).catch(()=>{});
+}catch(e){} })();
 
 // ---------- renderer / scene ----------
 const app=document.getElementById('app');
