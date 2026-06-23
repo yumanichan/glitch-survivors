@@ -13,19 +13,13 @@
   canvas { display:block; touch-action:none; }
 
   /* ---------- on-screen touch controls (iPad / mobile) ---------- */
-  #joybase { position:fixed; z-index:12; width:120px; height:120px; margin:-60px 0 0 -60px; border-radius:50%;
-             background:rgba(255,255,255,.06); border:2px solid rgba(70,224,200,.45); display:none; pointer-events:none; }
-  #joythumb { position:absolute; left:50%; top:50%; width:58px; height:58px; margin:-29px 0 0 -29px; border-radius:50%;
+  #joybase { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); z-index:12; width:144px; height:144px;
+             border-radius:50%; background:rgba(255,255,255,.06); border:2px solid rgba(70,224,200,.45); display:none; pointer-events:none; }
+  body.touch #joybase { display:block; }
+  #joythumb { position:absolute; left:50%; top:50%; width:66px; height:66px; margin:-33px 0 0 -33px; border-radius:50%;
               background:rgba(70,224,200,.32); border:2px solid rgba(70,224,200,.9); box-shadow:0 0 16px rgba(70,224,200,.5); }
-  #dashbtn { position:fixed; right:26px; bottom:38px; z-index:12; width:90px; height:90px; border-radius:50%;
-             background:rgba(70,224,200,.16); border:2px solid var(--accent); color:var(--accent); font-weight:800; font-size:13px;
-             letter-spacing:1px; display:none; align-items:center; justify-content:center; flex-direction:column; gap:2px;
-             pointer-events:auto; -webkit-tap-highlight-color:transparent; box-shadow:0 0 20px rgba(70,224,200,.3); }
-  #dashbtn .ic { font-size:26px; line-height:1; }
-  #dashbtn.cd { opacity:.4; }
-  #touchhint { position:fixed; left:50%; bottom:150px; transform:translateX(-50%); z-index:12; display:none;
+  #touchhint { position:fixed; left:50%; bottom:252px; transform:translateX(-50%); z-index:12; display:none;
                font-size:13px; opacity:.85; text-align:center; pointer-events:none; text-shadow:0 1px 3px #000; }
-  body.touch #dashbtn { display:flex; }
   body.touch #controls { display:none; }
   body.touch #dashui { display:none; }
 
@@ -144,8 +138,7 @@
 
 <!-- on-screen touch controls (appear automatically on touch devices) -->
 <div id="joybase"><div id="joythumb"></div></div>
-<button id="dashbtn"><span class="ic">💨</span>DASH</button>
-<div id="touchhint">Left thumb to move · drag right side to look</div>
+<div id="touchhint">スティックで移動</div>
 
 <div id="hud">
   <div id="xpbar"><div id="xpfill"></div></div>
@@ -170,8 +163,8 @@
 </div>
 
 <div id="levelup">
-  <h2>LEVEL UP!</h2>
-  <div class="sub">Choose your power</div>
+  <h2>レベルアップ！</h2>
+  <div class="sub">強化を選ぶ</div>
   <div id="cards"></div>
 </div>
 
@@ -409,10 +402,10 @@ function spawnSlime(x,z,tier,boss=false){
   for(const sx of [-0.22,0.22]){ const e=new THREE.Mesh(eyeGeo,eyeMat); e.position.set(sx,0.85,0.55); g.add(e); }
   const scale=boss?3.4:(0.75+tier*0.22);
   g.scale.setScalar(scale); g.position.set(x,0,z); scene.add(g);
-  const baseHp=boss?900:(20+tier*16);
+  const baseHp=boss?1000:(24+tier*18);
   const e={ id:'e'+(enemyIdCounter++), group:g,body,tier,boss,scale,
     hp:baseHp*enemyHpScale, maxhp:baseHp*enemyHpScale,
-    speed:boss?2.0:(2.0+tier*0.45), dmg:(boss?26:6+tier*4)*enemyDmgScale,
+    speed:boss?2.1:(2.1+tier*0.5), dmg:(boss?28:7+tier*4)*enemyDmgScale,
     xp:boss?40:(1+tier*2), hop:Math.random()*TAU, hurtFlash:0, atkCd:0, dead:false };
   enemies.push(e); return e;
 }
@@ -460,7 +453,7 @@ function lightningStrike(e,dmg){ if(e.dead)return; lightningFx(e.group.position)
   hurtEnemy(e,dmg,0,0,1,0.4); game.shake=Math.max(game.shake,0.18); }
 
 const WDEF={
-  bolt:{ name:'Magic Bolt', emoji:'✨', max:8,
+  bolt:{ name:'マジックボルト', emoji:'✨', max:8,
     cd:(l)=>Math.max(0.32,1.1-l*0.085),
     fire(l){ const count=1+Math.floor(l/2); const dmg=(11+l*5)*player.might;
       const tg=nearestEnemies(count,62); const o=player.group.position;
@@ -471,30 +464,30 @@ const WDEF={
         if(count>1&&!t){ dir.applyAxisAngle(new THREE.Vector3(0,1,0),(i-(count-1)/2)*0.22); }
         spawnProjectile(o,dir,dmg,1+Math.floor(l/3)); }
       sfx.shoot(); },
-    desc:(l)=>`Fires ${1+Math.floor((l+1)/2)} homing bolt(s) · ${Math.round((11+(l+1)*5))} dmg` },
-  nova:{ name:'Shock Nova', emoji:'💥', max:8,
+    desc:(l)=>`ホーミング弾 ${1+Math.floor((l+1)/2)}発 · ダメージ${Math.round((11+(l+1)*5))}` },
+  nova:{ name:'ショックノヴァ', emoji:'💥', max:8,
     cd:(l)=>Math.max(1.1,3.3-l*0.26),
     fire(l){ novaBlast((4.3+l*0.7)*player.area,(15+l*8)*player.might); },
-    desc:(l)=>`Pulse blast ${(4.3+(l+1)*0.7).toFixed(1)}m · ${Math.round((15+(l+1)*8))} dmg` },
-  spark:{ name:'Chain Spark', emoji:'⚡', max:8,
+    desc:(l)=>`衝撃波 半径${(4.3+(l+1)*0.7).toFixed(1)}m · ダメージ${Math.round((15+(l+1)*8))}` },
+  spark:{ name:'チェインスパーク', emoji:'⚡', max:8,
     cd:(l)=>Math.max(0.85,2.3-l*0.18),
     fire(l){ const c=1+Math.floor((l+1)/2); const dmg=(19+l*9)*player.might;
       nearestEnemies(c,42).forEach(e=>lightningStrike(e,dmg)); },
-    desc:(l)=>`Zaps ${1+Math.floor((l+2)/2)} foes · ${Math.round((19+(l+1)*9))} dmg` },
-  orb:{ name:'Orbit Guard', emoji:'🛰️', max:8,
+    desc:(l)=>`最大${1+Math.floor((l+2)/2)}体に連鎖 · ダメージ${Math.round((19+(l+1)*9))}` },
+  orb:{ name:'オービットガード', emoji:'🛰️', max:8,
     count:(l)=>Math.min(7,2+Math.floor(l/2)), dps:(l)=>(22+l*11)*player.might,
-    desc:(l)=>`${Math.min(7,2+Math.floor((l+1)/2))} orbs · ${Math.round((22+(l+1)*11))} dmg/s` },
+    desc:(l)=>`周回オーブ ${Math.min(7,2+Math.floor((l+1)/2))}個 · 毎秒${Math.round((22+(l+1)*11))}` },
 };
 const PDEF={
-  might:{ name:'Might', emoji:'💪', max:5, d:'+15% all damage', apply(){player.might+=0.15;} },
-  haste:{ name:'Haste', emoji:'⏩', max:5, d:'-10% weapon cooldown', apply(){player.haste=Math.max(0.4,player.haste-0.10);} },
-  boots:{ name:'Swift Boots', emoji:'🥾', max:5, d:'+12% move speed', apply(){player.moveSpeed*=1.12;} },
-  reso:{ name:'Resonance', emoji:'🌀', max:5, d:'+15% area / range', apply(){player.area+=0.15;} },
-  vit:{ name:'Vitality', emoji:'❤️', max:5, d:'+25 max HP, heal 40', apply(){player.maxhp+=25; player.hp=Math.min(player.maxhp,player.hp+40);} },
-  mag:{ name:'Magnet', emoji:'🧲', max:5, d:'+45% pickup range', apply(){player.magnet*=1.45;} },
-  wis:{ name:'Wisdom', emoji:'📘', max:5, d:'+20% XP gain', apply(){player.growth+=0.20;} },
-  regen:{ name:'Regen', emoji:'✚', max:5, d:'+0.7 HP per second', apply(){player.regen+=0.7;} },
-  armor:{ name:'Armor', emoji:'🛡️', max:5, d:'-2 damage taken', apply(){player.armor+=2;} },
+  might:{ name:'マイト', emoji:'💪', max:5, d:'全ダメージ +15%', apply(){player.might+=0.15;} },
+  haste:{ name:'ヘイスト', emoji:'⏩', max:5, d:'クールダウン -10%', apply(){player.haste=Math.max(0.4,player.haste-0.10);} },
+  boots:{ name:'俊足ブーツ', emoji:'🥾', max:5, d:'移動速度 +12%', apply(){player.moveSpeed*=1.12;} },
+  reso:{ name:'レゾナンス', emoji:'🌀', max:5, d:'範囲 +15%', apply(){player.area+=0.15;} },
+  vit:{ name:'バイタリティ', emoji:'❤️', max:5, d:'最大HP +25・40回復', apply(){player.maxhp+=25; player.hp=Math.min(player.maxhp,player.hp+40);} },
+  mag:{ name:'マグネット', emoji:'🧲', max:5, d:'回収範囲 +45%', apply(){player.magnet*=1.45;} },
+  wis:{ name:'ウィズダム', emoji:'📘', max:5, d:'経験値 +20%', apply(){player.growth+=0.20;} },
+  regen:{ name:'リジェネ', emoji:'✚', max:5, d:'毎秒 HP+0.7', apply(){player.regen+=0.7;} },
+  armor:{ name:'アーマー', emoji:'🛡️', max:5, d:'被ダメージ -2', apply(){player.armor+=2;} },
 };
 const weaponTimers={ bolt:0, nova:0, spark:0 };
 
@@ -564,9 +557,9 @@ function openLevelUp(){
     const c=document.createElement('div'); c.className='ucard'+(opt.type==='pas'?' pas':'');
     let ic,nm,lv,ds;
     if(opt.type==='wup'){ const w=WDEF[opt.id]; ic=w.emoji; nm=w.name; lv=`Lv ${player.weapons[opt.id]} → ${player.weapons[opt.id]+1}`; ds=w.desc(player.weapons[opt.id]); }
-    else if(opt.type==='wnew'){ const w=WDEF[opt.id]; ic=w.emoji; nm=w.name; lv=`<span class="new">NEW WEAPON</span>`; ds=w.desc(0); }
-    else if(opt.type==='pas'){ const pd=PDEF[opt.id]; const cur=player.passives[opt.id]||0; ic=pd.emoji; nm=pd.name; lv=cur?`Lv ${cur} → ${cur+1}`:`<span class="new">NEW</span>`; ds=pd.d; }
-    else { ic='❤️'; nm='Repair'; lv='Heal'; ds='Restore 60 HP'; }
+    else if(opt.type==='wnew'){ const w=WDEF[opt.id]; ic=w.emoji; nm=w.name; lv=`<span class="new">新武器</span>`; ds=w.desc(0); }
+    else if(opt.type==='pas'){ const pd=PDEF[opt.id]; const cur=player.passives[opt.id]||0; ic=pd.emoji; nm=pd.name; lv=cur?`Lv ${cur} → ${cur+1}`:`<span class="new">新規</span>`; ds=pd.d; }
+    else { ic='❤️'; nm='リペア'; lv='回復'; ds='HP を60回復'; }
     c.innerHTML=`<div class="ic">${ic}</div><div class="nm">${nm}</div><div class="lv">${lv}</div><div class="ds">${ds}</div>`;
     c.onclick=()=>choose(idx);
     cont.appendChild(c);
@@ -585,7 +578,7 @@ function rollOptions(){
 function choose(idx){
   const opt=pendingPicks[idx];
   if(opt.type==='wup'){ player.weapons[opt.id]++; toast(`${WDEF[opt.id].emoji} ${WDEF[opt.id].name} Lv${player.weapons[opt.id]}`,'gold'); }
-  else if(opt.type==='wnew'){ player.weapons[opt.id]=1; if(opt.id==='bolt'||opt.id==='nova'||opt.id==='spark')weaponTimers[opt.id]=0; toast(`${WDEF[opt.id].emoji} Unlocked ${WDEF[opt.id].name}!`,'gold'); }
+  else if(opt.type==='wnew'){ player.weapons[opt.id]=1; if(opt.id==='bolt'||opt.id==='nova'||opt.id==='spark')weaponTimers[opt.id]=0; toast(`${WDEF[opt.id].emoji} ${WDEF[opt.id].name} 解放！`,'gold'); }
   else if(opt.type==='pas'){ PDEF[opt.id].apply(); player.passives[opt.id]=(player.passives[opt.id]||0)+1; toast(`${PDEF[opt.id].emoji} ${PDEF[opt.id].name}`,'gold'); }
   else { player.hp=Math.min(player.maxhp,player.hp+60); }
   consumeLevel(); renderLoadout(); refreshHUD();
@@ -633,53 +626,34 @@ addEventListener('mousemove',e=>{ if(!dragging)return; const dx=e.clientX-lastX,
 addEventListener('mouseup',()=>dragging=false);
 renderer.domElement.addEventListener('wheel',e=>{ camDist=clamp(camDist+Math.sign(e.deltaY)*1.5,12,34); e.preventDefault(); },{passive:false});
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
-// ----- touch controls: left thumb = virtual joystick (move), right side = look, pinch = zoom -----
-const joy={active:false,id:null,ox:0,oy:0,nx:0,ny:0};
-let camTouchId=null, pinchPrev=null;
-const JOY_R=60;
-const joybase=document.getElementById('joybase'), joythumb=document.getElementById('joythumb');
-const dashbtn=document.getElementById('dashbtn'), touchhint=document.getElementById('touchhint');
-function enableTouchUI(){ if(!document.body.classList.contains('touch')){ document.body.classList.add('touch'); touchhint.style.display='block'; setTimeout(()=>touchhint.style.display='none',4500); } }
-function isLeftZone(x){ return x < innerWidth*0.45; }
+// ----- touch controls: one fixed joystick anchored bottom-center; pinch = zoom -----
+const joy={active:false,id:null,nx:0,ny:0};
+let pinchPrev=null;
+const JOY_R=66;
+const joybase=document.getElementById('joybase'), joythumb=document.getElementById('joythumb'), touchhint=document.getElementById('touchhint');
+function enableTouchUI(){ if(!document.body.classList.contains('touch')){ document.body.classList.add('touch'); if(touchhint){ touchhint.style.display='block'; setTimeout(()=>touchhint.style.display='none',4000); } } }
 function setThumb(dx,dy){ joythumb.style.transform=`translate(${dx}px,${dy}px)`; }
+function joyCenter(){ const r=joybase.getBoundingClientRect(); return { cx:r.left+r.width/2, cy:r.top+r.height/2 }; }
+function joyMove(t){ const c=joyCenter(); let dx=t.clientX-c.cx, dy=t.clientY-c.cy; const d=Math.hypot(dx,dy);
+  if(d>JOY_R){ dx=dx/d*JOY_R; dy=dy/d*JOY_R; } setThumb(dx,dy); joy.nx=dx/JOY_R; joy.ny=dy/JOY_R; }
 
 renderer.domElement.addEventListener('touchstart',e=>{ e.preventDefault(); enableTouchUI();
-  for(const t of e.changedTouches){
-    if(!joy.active && isLeftZone(t.clientX)){ joy.active=true; joy.id=t.identifier; joy.ox=t.clientX; joy.oy=t.clientY; joy.nx=joy.ny=0;
-      joybase.style.left=t.clientX+'px'; joybase.style.top=t.clientY+'px'; joybase.style.display='block'; setThumb(0,0); }
-    else if(camTouchId===null){ camTouchId=t.identifier; lastX=t.clientX; lastY=t.clientY; }
-  }
+  if(!joy.active){ const t=e.changedTouches[0]; joy.active=true; joy.id=t.identifier; joyMove(t); }
   if(e.touches.length>=2){ const a=e.touches[0],b=e.touches[1]; pinchPrev=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY); }
 },{passive:false});
 
 renderer.domElement.addEventListener('touchmove',e=>{ e.preventDefault();
-  for(const t of e.changedTouches){
-    if(joy.active && t.identifier===joy.id){
-      let dx=t.clientX-joy.ox, dy=t.clientY-joy.oy; const d=Math.hypot(dx,dy);
-      if(d>JOY_R){ dx=dx/d*JOY_R; dy=dy/d*JOY_R; }
-      setThumb(dx,dy); joy.nx=dx/JOY_R; joy.ny=dy/JOY_R;
-    } else if(t.identifier===camTouchId){
-      const dx=t.clientX-lastX, dy=t.clientY-lastY; camYaw-=dx*0.006; camPitch=clamp(camPitch-dy*0.005,0.45,1.35); lastX=t.clientX; lastY=t.clientY;
-    }
-  }
+  for(const t of e.changedTouches){ if(joy.active && t.identifier===joy.id) joyMove(t); }
   if(e.touches.length>=2 && pinchPrev!=null){ const a=e.touches[0],b=e.touches[1]; const nd=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
     camDist=clamp(camDist+(pinchPrev-nd)*0.05,12,34); pinchPrev=nd; }
 },{passive:false});
 
 function endTouch(e){ e.preventDefault();
-  for(const t of e.changedTouches){
-    if(t.identifier===joy.id){ joy.active=false; joy.id=null; joy.nx=joy.ny=0; joybase.style.display='none'; }
-    if(t.identifier===camTouchId){ camTouchId=null; }
-  }
+  for(const t of e.changedTouches){ if(t.identifier===joy.id){ joy.active=false; joy.id=null; joy.nx=joy.ny=0; setThumb(0,0); } }
   if(e.touches.length<2) pinchPrev=null;
 }
 renderer.domElement.addEventListener('touchend',endTouch,{passive:false});
 renderer.domElement.addEventListener('touchcancel',endTouch,{passive:false});
-
-// dash button
-function dashPress(e){ e.preventDefault(); enableTouchUI(); if(game.state==='playing')doDash(); }
-dashbtn.addEventListener('touchstart',dashPress,{passive:false});
-dashbtn.addEventListener('mousedown',dashPress);
 
 function doDash(){ if(player.dashCd>0||!player.alive)return; player.dashT=0.16; player.dashCd=1.6; player.hurtCd=Math.max(player.hurtCd,0.34);
   if(player.actions['Jump']){ player.actions['Jump'].reset(); } burst(player.group.position.clone().add(new THREE.Vector3(0,0.6,0)),0x46e0c8,8,0.7); sfx.shoot(); }
@@ -752,7 +726,7 @@ function update(dt){
   // ---- difficulty + spawning + timer (only while playing) ----
   if(game.state==='playing'){
     game.time+=dt;
-    enemyHpScale=1+game.time*0.035; enemyDmgScale=1+game.time*0.02;
+    enemyHpScale=1+game.time*0.05; enemyDmgScale=1+game.time*0.025;
     ui.clock.textContent=fmtTime(game.time);
 
     if(mpAmHost()){   // only the host (or solo) spawns the swarm; the guest receives it over the network
@@ -883,9 +857,8 @@ function update(dt){
 
   if(player.mixer&&game.state!=='levelup')player.mixer.update(dt);
 
-  // dash cd indicator (desktop dot + touch button)
+  // dash cd indicator (desktop dot)
   ui.dashdot.className='dot'+(player.dashCd>0?' cd':'');
-  dashbtn.className=(player.dashCd>0?'cd':'');
 
   // ---- camera (top-down-ish follow + shake) ----
   const p=player.group.position; camTarget.set(p.x,1.4,p.z);
