@@ -134,17 +134,21 @@
     .ucard .nm { font-size:14px; }
     .ucard .ds { font-size:11.5px; line-height:1.4; }
   }
-  /* multiplayer level-up: compact, anchored to the TOP, and non-blocking so you keep moving while you pick */
-  #levelup.mp { background:transparent; backdrop-filter:none; justify-content:flex-start; padding-top:58px; pointer-events:none; }
-  #levelup.mp h2, #levelup.mp .sub { display:none; }   /* hide title in MP so it doesn't overlap the timer */
-  #levelup.mp #cards { max-width:540px; }
-  #levelup.mp .ucard { min-height:0; padding:9px 7px; }
-  #levelup.mp .ucard .ic { font-size:24px; margin-bottom:3px; }
-  #levelup.mp .ucard .nm { font-size:13px; }
-  #levelup.mp .ucard .lv { margin-bottom:5px; }
-  #levelup.mp .ucard .ds { font-size:10.5px; line-height:1.3; }
+  /* J/K/L key hint on cards */
   .ucard .key { margin:7px auto 0; width:24px; padding:2px 0; border-radius:6px; font-size:11px; font-weight:800; color:#06121a; background:var(--accent); }
   @media (pointer:coarse){ .ucard .key{ display:none; } }   /* hide J/K/L hint on touch (iPad) */
+  /* 🏠 house / shelter theme — level-up = stepping into a safe house. --house-tex can be set to a GPT-made interior image later */
+  #levelup.house { background:rgba(22,13,7,.82); backdrop-filter:blur(3px); }
+  #levelup.house h2 { background:linear-gradient(90deg,#ffd9a0,#ffb35c); -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 0 24px rgba(255,160,70,.25); }
+  #levelup.house .sub { color:#e7c9a0; opacity:.85; }
+  #levelup.house #cards { background:var(--house-tex,none), linear-gradient(180deg,rgba(74,48,28,.92),rgba(44,28,17,.96));
+        background-size:cover; background-position:center; border:2px solid rgba(190,138,82,.5); border-radius:16px;
+        padding:16px 12px; box-shadow:inset 0 0 60px rgba(0,0,0,.55); max-width:760px; }
+  #levelup.house .ucard { background:linear-gradient(160deg,rgba(64,44,27,.96),rgba(42,29,18,.97)); border-color:rgba(200,150,90,.5); }
+  #levelup.house .ucard.pas { border-color:rgba(255,207,58,.5); }
+  #levelup.house .ucard:hover { border-color:#ffce8a; box-shadow:0 14px 40px rgba(255,180,90,.3); }
+  /* MP house: keep the field (partner fighting) visible behind + non-blocking; cards still tappable */
+  #levelup.mp.house { background:rgba(22,13,7,.30); backdrop-filter:none; pointer-events:none; }
 
   #hurt { position:fixed; inset:0; z-index:15; pointer-events:none;
           box-shadow:inset 0 0 140px rgba(255,40,60,0); transition:box-shadow .1s; }
@@ -165,6 +169,9 @@
   #downed #dfill { height:100%; width:0%; background:linear-gradient(90deg,#7af7ff,var(--accent)); transition:width .1s linear; }
   /* mute toggle */
   #muteBtn { position:fixed; top:20px; right:14px; z-index:16; width:38px; height:38px; border-radius:10px;
+             background:rgba(8,14,22,.7); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:17px;
+             cursor:pointer; pointer-events:auto; -webkit-tap-highlight-color:transparent; }
+  #clogFab { position:fixed; top:20px; right:58px; z-index:16; width:38px; height:38px; border-radius:10px;
              background:rgba(8,14,22,.7); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:17px;
              cursor:pointer; pointer-events:auto; -webkit-tap-highlight-color:transparent; }
   /* changelog panel */
@@ -201,6 +208,7 @@
 </div>
 
 <button id="muteBtn" title="サウンド切替">🔊</button>
+<button id="clogFab" title="変更ログ">📜</button>
 
 <div id="hud">
   <div id="xpbar"><div id="xpfill"></div></div>
@@ -268,6 +276,13 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/24 — Build 24</div>
+      <ul>
+        <li>🏠 <b>レベルアップ＝安全な家に入る</b>方式に（カード選択中は安全）</li>
+        <li>家の中は<b>敵の標的から外れる</b>／接触ダメージ無敵</li>
+        <li>MPは一人が家に入ると<b>敵がもう一人を狙う</b>（囮）／家の中は<b>相手から見えない</b></li>
+        <li>📜 変更ログを<b>常時</b>開けるボタンを右上に追加</li>
+      </ul>
       <div class="clog-day">6/24 — Build 22</div>
       <ul>
         <li>経験値を敵の強さで変化（群れ1 → 重装甲12 → ボス55）</li>
@@ -328,7 +343,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='23';
+const BUILD='24';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -523,7 +538,7 @@ const player={
   moveSpeed:8.5, might:1.2, haste:1, area:1, magnet:5.5, growth:1, armor:0, regen:0,
   hurtCd:0, dashCd:0, dashT:0, lastDir:new THREE.Vector3(0,0,1),
   weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, flameMesh:null, flameCache:0,
-  crit:0, amount:0, lifesteal:0, evo:{}, alive:true, down:false, downT:0, reviveP:0,
+  crit:0, amount:0, lifesteal:0, evo:{}, alive:true, down:false, downT:0, reviveP:0, inHouse:false,
 };
 scene.add(player.group);
 
@@ -786,9 +801,12 @@ function consumeLevel(){ player.xp-=player.xpNext; player.level++; player.xpNext
 
 let pendingPicks=null;
 function openLevelUp(){
-  const mp = MP.enabled && MP.joined;        // multiplayer: don't freeze the world — choose while you run/dodge
+  const mp = MP.enabled && MP.joined;        // multiplayer: world keeps running (partner becomes the target)
+  enterHouse();                              // step into the safe house (safe / invisible to partner / aggro shifts)
   if(!mp) game.state='levelup';              // single player keeps the classic full-screen pause
   game.picking=true; sfx.level(); game.shake=Math.max(game.shake,0.3);
+  document.querySelector('#levelup h2').textContent='🏠 家で強化';
+  document.querySelector('#levelup .sub').textContent = mp ? '安全 — でも相手が狙われる。早めに選ぼう' : '安全な家 — ゆっくり選ぼう';
   pendingPicks=rollOptions();
   const cont=document.getElementById('cards'); cont.innerHTML='';
   pendingPicks.forEach((opt,idx)=>{
@@ -803,7 +821,7 @@ function openLevelUp(){
     c.onclick=()=>choose(idx);
     cont.appendChild(c);
   });
-  const lu=document.getElementById('levelup'); lu.classList.toggle('mp',mp); lu.classList.add('show');
+  const lu=document.getElementById('levelup'); lu.classList.toggle('mp',mp); lu.classList.add('show','house');
 }
 function rollOptions(){
   const pool=[];
@@ -822,8 +840,8 @@ function choose(idx){
   else if(opt.type==='pas'){ PDEF[opt.id].apply(); player.passives[opt.id]=(player.passives[opt.id]||0)+1; toast(`${PDEF[opt.id].emoji} ${PDEF[opt.id].name}`,'gold'); }
   else { player.hp=Math.min(player.maxhp,player.hp+60); }
   consumeLevel(); checkEvolutions(); renderLoadout(opt.id); refreshHUD();
-  if(player.xp>=player.xpNext){ openLevelUp(); }      // chain multi-level (re-rolls the next set)
-  else { const mp=MP.enabled&&MP.joined; document.getElementById('levelup').classList.remove('show'); pendingPicks=null; game.picking=false; if(!mp) game.state='playing'; }
+  if(player.xp>=player.xpNext){ openLevelUp(); }      // chain multi-level (stay in the house, re-roll next set)
+  else { const mp=MP.enabled&&MP.joined; document.getElementById('levelup').classList.remove('show','house'); pendingPicks=null; game.picking=false; exitHouse(); if(!mp) game.state='playing'; }
 }
 
 // =================================================================
@@ -937,6 +955,7 @@ document.getElementById('cancelBtn').onclick=()=>{ mpLeave(); showMenu(); };
 document.getElementById('lobbySoloBtn').onclick=()=>{ mpLeave(); MP.enabled=false; startGame(); };   // escape hatch: never stuck waiting
 document.getElementById('muteBtn').onclick=()=>{ sfx.init(); const m=sfx.toggleMute(); document.getElementById('muteBtn').textContent=m?'🔇':'🔊'; };
 document.getElementById('clogBtn').onclick=()=>document.getElementById('changelog').classList.add('show');
+document.getElementById('clogFab').onclick=()=>document.getElementById('changelog').classList.add('show');   // always-on button (menu + in-game)
 document.getElementById('clogClose').onclick=()=>document.getElementById('changelog').classList.remove('show');
 document.getElementById('respawnbtn').onclick=()=>{
   if(MP.enabled && MP.joined){   // co-op: reboot BOTH players together (the shared restart listener fires for both)
@@ -973,9 +992,10 @@ function resetGame(){
   meteors.forEach(m=>{ scene.remove(m.m); scene.remove(m.tel); }); meteors.length=0;
   Object.assign(player,{ hp:100,maxhp:100,level:1,xp:0,xpNext:5,
     moveSpeed:8.5,might:1.2,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,crit:0,amount:0,lifesteal:0,evo:{},
-    hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0 });
+    hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0,inHouse:false });
+  if(MP.enabled&&MP.joined) mpSendHouse(false);   // make sure I'm not stuck "in the house" after a reset
   player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
-  const _lu=document.getElementById('levelup'); _lu.classList.remove('show','mp'); pendingPicks=null;   // clear any open level-up picker
+  const _lu=document.getElementById('levelup'); _lu.classList.remove('show','mp','house'); pendingPicks=null;   // clear any open level-up picker
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0,picking:false });
   weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0; weaponTimers.meteor=0; weaponTimers.blade=0; weaponTimers.chakram=0;
   if(player.actions['Death'])player.actions['Death'].stop(); player.current=null; fade('Idle',0);
@@ -983,7 +1003,8 @@ function resetGame(){
 }
 
 function die(){ player.alive=false; player.down=false; game.state='dead'; game.picking=false;
-  document.getElementById('levelup').classList.remove('show','mp'); pendingPicks=null;   // close any open picker on death
+  document.getElementById('levelup').classList.remove('show','mp','house'); pendingPicks=null;   // close any open picker on death
+  player.inHouse=false; mpSendHouse(false);   // never die while "in the house"
   fade('Death',0.2); sfx.musicStop();
   document.getElementById('d_time').textContent=fmtTime(game.time);
   document.getElementById('d_lvl').textContent=player.level;
@@ -1036,7 +1057,7 @@ function update(dt){
     if(keys['KeyW']||keys['ArrowUp'])iz-=1; if(keys['KeyS']||keys['ArrowDown'])iz+=1;
     if(keys['KeyA']||keys['ArrowLeft'])ix-=1; if(keys['KeyD']||keys['ArrowRight'])ix+=1;
     if(joy.active){ ix+=joy.nx; iz+=joy.ny; }            // iPad/touch virtual joystick
-    const moving=(Math.abs(ix)>0.08||Math.abs(iz)>0.08) && !player.down; player._moving=moving;
+    const moving=(Math.abs(ix)>0.08||Math.abs(iz)>0.08) && !player.down && !player.inHouse; player._moving=moving;
     let speed=player.moveSpeed;
     player.dashT=Math.max(0,player.dashT-dt); player.dashCd=Math.max(0,player.dashCd-dt);
     if(player.dashT>0)speed*=3.4;
@@ -1059,7 +1080,7 @@ function update(dt){
     player.hurtCd=Math.max(0,player.hurtCd-dt);
     if(player.regen>0&&player.hp<player.maxhp){ player.hp=Math.min(player.maxhp,player.hp+player.regen*dt); refreshHUD(); }
 
-    if(!player.down){   // weapons fire only while up
+    if(!player.down && !player.inHouse){   // weapons fire only while up and out of the house
     // ---- weapons: timer-based ----
     for(const id of ['bolt','nova','spark','meteor','blade','chakram']){ if(!(id in player.weapons))continue;
       weaponTimers[id]-=dt; if(weaponTimers[id]<=0){ const l=player.weapons[id]; const ev=!!(player.evo&&player.evo[id]);
@@ -1119,17 +1140,20 @@ function update(dt){
                        e.group.position.z+=(e.netTarget.z-e.group.position.z)*Math.min(1,dt*10); }
       const dx=player.group.position.x-e.group.position.x, dz=player.group.position.z-e.group.position.z; const d=Math.hypot(dx,dz);
       e.group.rotation.y=Math.atan2(dx,dz);
-      if(game.state==='playing'&&player.alive&&d<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; }
+      if(game.state==='playing'&&player.alive&&!player.inHouse&&d<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; }
     } else {
-      // host / solo simulation: chase the nearest player (host also considers the guest)
-      let tx=player.group.position.x, tz=player.group.position.z;
-      if(coop){ const gp=MP.remote.group.position;
-        if(((gp.x-e.group.position.x)**2+(gp.z-e.group.position.z)**2) < ((tx-e.group.position.x)**2+(tz-e.group.position.z)**2)){ tx=gp.x; tz=gp.z; } }
-      const dx=tx-e.group.position.x, dz=tz-e.group.position.z; const d=Math.hypot(dx,dz);
-      if(game.state==='playing'&&d>0.01){ const sp=e.speed;
-        e.group.position.x+=dx/d*sp*dt; e.group.position.z+=dz/d*sp*dt; e.group.rotation.y=Math.atan2(dx,dz); }
-      const dme=Math.hypot(player.group.position.x-e.group.position.x, player.group.position.z-e.group.position.z);
-      if(game.state==='playing'&&player.alive&&dme<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; }
+      // host / solo: chase the nearest player, EXCLUDING anyone sheltering in the house (R3 safe / R5 aggro shifts to the one outside)
+      const meIn=player.inHouse, otherIn=mpRemoteInHouse();
+      let tx=null, tz=null;
+      if(!meIn){ tx=player.group.position.x; tz=player.group.position.z; }
+      if(coop && !otherIn){ const gp=MP.remote.group.position;
+        if(tx===null || ((gp.x-e.group.position.x)**2+(gp.z-e.group.position.z)**2) < ((tx-e.group.position.x)**2+(tz-e.group.position.z)**2)){ tx=gp.x; tz=gp.z; } }
+      if(game.state==='playing' && tx!==null){   // tx===null = everyone is in the house → enemy just waits in place
+        const dx=tx-e.group.position.x, dz=tz-e.group.position.z, d=Math.hypot(dx,dz);
+        if(d>0.01){ const sp=e.speed; e.group.position.x+=dx/d*sp*dt; e.group.position.z+=dz/d*sp*dt; e.group.rotation.y=Math.atan2(dx,dz); } }
+      if(game.state==='playing'&&player.alive&&!meIn){   // contact damage to me only if I'm outside
+        const dme=Math.hypot(player.group.position.x-e.group.position.x, player.group.position.z-e.group.position.z);
+        if(dme<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; } }
     }
     e.hop+=dt*7; const hop=Math.abs(Math.sin(e.hop));
     e.group.position.y=hop*0.32*e.scale; e.body.scale.y=1-hop*0.16; e.body.scale.x=e.body.scale.z=1+hop*0.09;
@@ -1206,7 +1230,7 @@ const firebaseConfig = {
 
 const MP = { enabled:false, db:null, _D:null, roomId:null, role:null, mySlot:null, otherSlot:null,
   joined:false, remote:null, lastWrite:0, teamKills:0, sharedTime:0, _rematching:false,
-  netMap:{}, dmgAccum:{}, _appliedRole:null, remoteAtk:null };
+  netMap:{}, dmgAccum:{}, _appliedRole:null, remoteAtk:null, remoteHouse:null };
 const mpbadge = document.getElementById('mpbadge');
 function setBadge(t,c){ if(!mpbadge)return; mpbadge.textContent=t; mpbadge.style.borderColor=c||'rgba(70,224,200,.4)'; mpbadge.style.display='block'; }
 
@@ -1287,6 +1311,11 @@ function mpEnterRoom(){
   MP._unsubRestart=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/restart`),(s)=>{ const v=s.val()||0;
     if(!MP._restartPrimed){ MP._lastRestart=v; MP._restartPrimed=true; return; }   // first callback = baseline (ignore any stale value)
     if(v>(MP._lastRestart||0)){ MP._lastRestart=v; mpDoCoopRestart(); } });
+  // ---- house/shelter: partner's in-house state (so we can hide them + shift enemy aggro) ----
+  MP.remoteHouse=null;
+  MP._D.onDisconnect(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.mySlot}`)).remove();   // drop my house flag if I leave
+  if(MP._unsubHouse){MP._unsubHouse();MP._unsubHouse=null;}
+  MP._unsubHouse=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.otherSlot}`),(s)=>{ MP.remoteHouse=s.val(); });
   mpEnsureSelfTag();   // show "プレイヤーN" over my own character
   setBadge('🟡 相手を待っています…','#ffcf3a');
   // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
@@ -1394,10 +1423,18 @@ function mpEnsureSelfTag(){
 // synchronized co-op reboot: either player presses 再挑戦 → both reset to a fresh run at the same time
 function mpDoCoopRestart(){
   deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden');
-  const lu=document.getElementById('levelup'); lu.classList.remove('show','mp');
+  const lu=document.getElementById('levelup'); lu.classList.remove('show','mp','house');
   resetGame();
   if(player._tag) player._tag.visible=true;   // keep the self tag after reset
 }
+// ===== house / shelter (level-up = step into a safe house): networking + helpers =====
+// broadcast my in-house state on the WRITABLE state/ path (NO new players/ field → no rule change, no re-break)
+function mpSendHouse(v){ if(!(MP.enabled&&MP.joined))return; try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/house_${MP.mySlot}`),{in:!!v,t:Date.now()}); }catch(e){} }
+function mpRemoteInHouse(){ const h=MP.remoteHouse; return !!(h&&h.in&&(Date.now()-(h.t||0)<5000)); }   // freshness so a frozen partner doesn't stay invisible
+function enterHouse(){ if(player.inHouse)return; player.inHouse=true; mpSendHouse(true);
+  if(MP.enabled&&MP.joined) burst(player.group.position.clone().add(new THREE.Vector3(0,0.8,0)),0xffd86b,12,1); }   // 煙パフ
+function exitHouse(){ player.inHouse=false; mpSendHouse(false);
+  if(MP.enabled&&MP.joined) burst(player.group.position.clone().add(new THREE.Vector3(0,0.8,0)),0xffd86b,10,1); }
 function mpDestroyRemote(){ if(MP.remote){ scene.remove(MP.remote.group); MP.remote=null; } mpClearRemoteAtkMeshes(); }
 
 // ===================== co-op ATTACK-visual sync (so each player can SEE the other's attacks) =====================
@@ -1406,6 +1443,7 @@ function mpDestroyRemote(){ if(MP.remote){ scene.remove(MP.remote.group); MP.rem
 function mpBroadcastAttacks(){
   if(!MP.joined) return;
   const out={ _t:Date.now() };
+  if(player.inHouse){ try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/atk_${MP.mySlot}`), out); }catch(e){} return; }   // in the house: send nothing so my attacks vanish for the partner
   if(projectiles.length){ const p={}; let n=0;
     for(const pr of projectiles){ if(n++>=48)break; p['p'+pr.id]=[+pr.m.position.x.toFixed(1),+pr.m.position.z.toFixed(1)]; }
     out.p=p; }
@@ -1469,6 +1507,7 @@ function mpTick(dt){
   }
   const R=MP.remote;
   if(R && R.present){
+    R.group.visible = !mpRemoteInHouse();   // R6: partner is invisible while sheltering in their house
     R.group.position.lerp(R.target, Math.min(1,dt*10));
     let df=R.ry-R.group.rotation.y; while(df>Math.PI)df-=TAU; while(df<-Math.PI)df+=TAU;
     R.group.rotation.y+=df*Math.min(1,dt*10);
