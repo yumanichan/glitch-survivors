@@ -276,7 +276,7 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
-      <div class="clog-day">6/24 — Build 25</div>
+      <div class="clog-day">6/24 — Build 26</div>
       <ul>
         <li>🏠 <b>レベルアップ＝安全な家に入る</b>方式に（カード選択中は安全）</li>
         <li>家の中は<b>敵の標的から外れる</b>／接触ダメージ無敵</li>
@@ -343,7 +343,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='25';
+const BUILD='26';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1315,7 +1315,7 @@ function mpEnterRoom(){
   MP.remoteHouse=null;
   MP._D.onDisconnect(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.mySlot}`)).remove();   // drop my house flag if I leave
   if(MP._unsubHouse){MP._unsubHouse();MP._unsubHouse=null;}
-  MP._unsubHouse=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.otherSlot}`),(s)=>{ MP.remoteHouse=s.val(); });
+  MP._unsubHouse=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.otherSlot}`),(s)=>{ MP.remoteHouse=s.val(); MP._remoteHouseAt=Date.now(); });   // record OUR arrival time (skew-proof freshness)
   mpEnsureSelfTag();   // show "プレイヤーN" over my own character
   setBadge('🟡 相手を待っています…','#ffcf3a');
   // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
@@ -1430,7 +1430,7 @@ function mpDoCoopRestart(){
 // ===== house / shelter (level-up = step into a safe house): networking + helpers =====
 // broadcast my in-house state on the WRITABLE state/ path (NO new players/ field → no rule change, no re-break)
 function mpSendHouse(v){ if(!(MP.enabled&&MP.joined))return; try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/house_${MP.mySlot}`),{in:!!v,t:Date.now()}); }catch(e){} }
-function mpRemoteInHouse(){ const h=MP.remoteHouse; return !!(h&&h.in&&(Date.now()-(h.t||0)<5000)); }   // freshness so a frozen partner doesn't stay invisible
+function mpRemoteInHouse(){ return !!(MP.remoteHouse&&MP.remoteHouse.in&&(Date.now()-(MP._remoteHouseAt||0)<5000)); }   // freshness by OUR arrival time (no cross-device clock skew); heartbeat re-sends every 2s
 function enterHouse(){ if(player.inHouse)return; player.inHouse=true; mpSendHouse(true);
   if(MP.enabled&&MP.joined) burst(player.group.position.clone().add(new THREE.Vector3(0,0.8,0)),0xffd86b,12,1); }   // 煙パフ
 function exitHouse(){ player.inHouse=false; mpSendHouse(false);
