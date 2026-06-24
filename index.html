@@ -296,6 +296,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/24 — Build 29</div>
+      <ul>
+        <li>⚡ <b>全モード軽量化</b>：解像度/影/オブジェクト数を最適化（タッチ端末は特に高速化）</li>
+        <li>敵・XP・弾の上限を設定し、混戦でもカクつきにくく（マルチも同様）</li>
+      </ul>
       <div class="clog-day">6/24 — Build 28</div>
       <ul>
         <li>🛒 <b>ショップ制に変更</b>：レベルアップで<b>強化チケット</b>が貯まり、🛒ボタンで開く</li>
@@ -370,7 +375,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='28';
+const BUILD='29';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -381,8 +386,10 @@ const BUILD='28';
 
 // ---------- renderer / scene ----------
 const app=document.getElementById('app');
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+// touch devices (iPad/phone) favour FPS: no antialias, lower pixel ratio — big win on retina screens
+const LOWP = !!(window.matchMedia && matchMedia('(pointer:coarse)').matches);
+const renderer=new THREE.WebGLRenderer({antialias:!LOWP,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, LOWP?1.5:2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -397,7 +404,7 @@ const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,600);
 const hemi=new THREE.HemisphereLight(0xbfe3ff,0x4d6a4a,0.95); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff3da,2.1);
 sun.position.set(40,70,30); sun.castShadow=true;
-sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.near=1; sun.shadow.camera.far=220;
+sun.shadow.mapSize.set(1024,1024); sun.shadow.camera.near=1; sun.shadow.camera.far=220;   // 2048→1024: 4x cheaper shadow pass, still crisp for this art
 const sc=90; sun.shadow.camera.left=-sc; sun.shadow.camera.right=sc; sun.shadow.camera.top=sc; sun.shadow.camera.bottom=-sc;
 sun.shadow.bias=-0.0004; scene.add(sun); scene.add(sun.target);
 
@@ -510,7 +517,7 @@ const sfx=(function(){
 // =================================================================
 const damageTexts=[];
 function floatText(pos,text,color='#fff',big=false){
-  if(damageTexts.length>55)return;
+  if(damageTexts.length>24)return;   // cap concurrent damage numbers (each is a canvas-texture upload — perf)
   const cv=document.createElement('canvas'); cv.width=128; cv.height=64; const cx=cv.getContext('2d');
   cx.font=`bold ${big?48:34}px Segoe UI, sans-serif`; cx.textAlign='center'; cx.textBaseline='middle';
   cx.lineWidth=6; cx.strokeStyle='rgba(0,0,0,.85)'; cx.strokeText(text,64,32); cx.fillStyle=color; cx.fillText(text,64,32);
@@ -600,7 +607,7 @@ function spawnSlime(x,z,typeKey,boss=false){
   const col=new THREE.Color().setHSL(hue,0.7,lum);
   const g=new THREE.Group();
   const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
-  body.castShadow=true; body.position.y=0.7; g.add(body);
+  body.castShadow=false; body.position.y=0.7; g.add(body);   // enemies don't cast shadows (perf: many of them)
   const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
   for(const sx of [-0.22,0.22]){ const e=new THREE.Mesh(eyeGeo,eyeMat); e.position.set(sx,0.85,0.55); g.add(e); }
   const scale=boss?3.4:t.scale;
@@ -618,10 +625,10 @@ function spawnSlime(x,z,typeKey,boss=false){
 // =================================================================
 const shards=[]; const shardGeo=new THREE.OctahedronGeometry(0.28,0);
 function dropShard(pos,value,color=0x5bd0ff){
-  if(shards.length>240){ // auto-absorb oldest to cap count
+  if(shards.length>160){ // auto-absorb oldest to cap count (perf)
     const old=shards.shift(); scene.remove(old.m); player.xp+=old.value*player.growth; }
   const m=new THREE.Mesh(shardGeo,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.7,metalness:0.3,roughness:0.2}));
-  m.position.set(pos.x,0.6,pos.z); m.castShadow=true; scene.add(m);
+  m.position.set(pos.x,0.6,pos.z); m.castShadow=false; scene.add(m);
   shards.push({m,value,t:Math.random()*6});
 }
 const hearts=[]; const heartGeo=new THREE.SphereGeometry(0.32,10,10);
@@ -634,6 +641,7 @@ function dropHeart(pos){ const m=new THREE.Mesh(heartGeo,new THREE.MeshStandardM
 const projectiles=[]; const projGeo=new THREE.SphereGeometry(0.22,8,8);
 const projMat=new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.4,roughness:0.2});
 function spawnProjectile(origin,dir,dmg,pierce){
+  if(projectiles.length>140){ const old=projectiles.shift(); scene.remove(old.m); }   // cap projectiles (collision is O(proj×enemies))
   const m=new THREE.Mesh(projGeo,projMat); m.position.set(origin.x,1.0,origin.z); m.scale.setScalar(1.1); scene.add(m);
   projectiles.push({m,vel:dir.clone().multiplyScalar(24),dmg,pierce,life:0,hit:new Set(),id:(game._pid=(game._pid||0)+1)});
 }
@@ -1086,7 +1094,9 @@ function update(dt){
 
     if(mpAmHost()){   // only the host (or solo) spawns the swarm; the guest receives it over the network
       game.spawnT-=dt;
-      if(game.spawnT<=0){ game.spawnT=Math.max(0.4,1.3-game.time*0.012);
+      // hard cap on live enemies so the swarm can't snowball into a slideshow (keeps every mode smooth)
+      let aliveEnemies=0; for(const e of enemies){ if(!e.dead&&!e.net) aliveEnemies++; }
+      if(game.spawnT<=0 && aliveEnemies<150){ game.spawnT=Math.max(0.4,1.3-game.time*0.012);
         spawnRing(3+Math.floor(game.time/14)); }   // more enemies, spread around the player
 
       game.bossT-=dt;
@@ -1150,7 +1160,7 @@ function update(dt){
       if(player.orbLevelCache!==want){ player.orbMeshes.forEach(o=>scene.remove(o)); player.orbMeshes=[];
         for(let i=0;i<want;i++){ const o=new THREE.Mesh(new THREE.SphereGeometry(0.34,12,12),
           new THREE.MeshStandardMaterial({color:oev?0xffcf3a:0x9af0ff,emissive:oev?0xff8a1c:0x46e0c8,emissiveIntensity:1.2,roughness:0.2}));
-          o.castShadow=true; scene.add(o); player.orbMeshes.push(o); } player.orbLevelCache=want; }
+          o.castShadow=false; scene.add(o); player.orbMeshes.push(o); } player.orbLevelCache=want; }
       const dps=WDEF.orb.dps(l)*(oev?1.7:1); const R=ORB_R*player.area; game._orbA=(game._orbA||0)+dt*2.6;
       player.orbMeshes.forEach((o,i)=>{ const a=game._orbA+i/want*TAU;
         o.position.set(player.group.position.x+Math.cos(a)*R,1.0,player.group.position.z+Math.sin(a)*R);
@@ -1600,7 +1610,7 @@ function mpMakeNetEnemy(id,d){
   const hue=boss?0:t.hue, lum=boss?0.4:t.lum; const col=new THREE.Color().setHSL(hue,0.7,lum);
   const g=new THREE.Group();
   const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
-  body.castShadow=true; body.position.y=0.7; g.add(body);
+  body.castShadow=false; body.position.y=0.7; g.add(body);   // enemies don't cast shadows (perf: many of them)
   const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
   for(const sx of [-0.22,0.22]){ const ey=new THREE.Mesh(eyeGeo,eyeMat); ey.position.set(sx,0.85,0.55); g.add(ey); }
   g.scale.setScalar(scale); g.position.set(d.x,0,d.z); scene.add(g);
