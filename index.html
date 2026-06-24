@@ -318,6 +318,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 37</div>
+      <ul>
+        <li>✨ マジックボルトを<b>向いた方向へ連射</b>（狙い撃ち）に。<b>レベルアップしても狙いは維持</b>（全レベル・進化・マルチショットで確認済み）</li>
+        <li>他の武器は自動ターゲットのまま。見た目は build 33 のまま</li>
+      </ul>
       <div class="clog-day">6/25 — Build 36</div>
       <ul>
         <li>↩️ アート（世界観）を build 33 の見た目に戻しました（ほのぼのファンタジー化を撤回）</li>
@@ -417,7 +422,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='36';
+const BUILD='37';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -714,17 +719,21 @@ function lightningStrike(e,dmg){ if(e.dead)return; lightningFx(e.group.position)
   hurtEnemy(e,dmg,0,0,1,0.4); game.shake=Math.max(game.shake,0.18); }
 
 const WDEF={
-  bolt:{ name:'マジックボルト', emoji:'✨', max:8,
-    cd:(l)=>Math.max(0.32,1.1-l*0.085),
+  bolt:{ name:'マジックボルト', emoji:'✨', max:8, aimed:true,
+    cd:(l)=>Math.max(0.2,0.6-l*0.05),   // continuous stream (aimed, not homing)
     fire(l,evo){ const count=1+Math.floor(l/2)+(player.amount||0)+(evo?3:0); const dmg=(11+l*5)*player.might*(evo?1.6:1);
-      const tg=nearestEnemies(count,62); const o=player.group.position;
-      for(let i=0;i<count;i++){ const t=tg[i]||tg[0]; let dir;
-        if(t){ dir=new THREE.Vector3(t.group.position.x-o.x,0,t.group.position.z-o.z).normalize(); }
-        else { dir=new THREE.Vector3(player.lastDir.x,0,player.lastDir.z).normalize(); if(dir.lengthSq()<0.01)dir.set(0,0,1); }
-        if(count>1&&!t){ dir.applyAxisAngle(new THREE.Vector3(0,1,0),(i-(count-1)/2)*0.22); }
-        spawnProjectile(o,dir,dmg,1+Math.floor(l/3)+(evo?3:0)); }
+      const o=player.group.position;
+      // ALWAYS aim where the player faces — computed every shot, independent of level/evo/upgrades, so the aim never disappears
+      let dir=new THREE.Vector3(player.lastDir.x,0,player.lastDir.z);
+      if(dir.lengthSq()<0.0001) dir.set(Math.sin(player.group.rotation.y),0,Math.cos(player.group.rotation.y));
+      if(dir.lengthSq()<0.0001) dir.set(0,0,1);
+      dir.normalize();
+      const pierce=1+Math.floor(l/3)+(evo?3:0);
+      for(let i=0;i<count;i++){ const d=dir.clone();
+        if(count>1) d.applyAxisAngle(new THREE.Vector3(0,1,0),(i-(count-1)/2)*0.15);   // small forward fan, still centered on the aim
+        spawnProjectile(o,d,dmg,pierce); }
       sfx.shoot(); },
-    desc:(l)=>`ホーミング弾 ${1+Math.floor((l+1)/2)}発 · ダメージ${Math.round((11+(l+1)*5))}` },
+    desc:(l)=>`向いた方向へ連射 ${1+Math.floor((l+1)/2)}発 · ダメージ${Math.round((11+(l+1)*5))}` },
   nova:{ name:'ショックノヴァ', emoji:'💥', max:8,
     cd:(l)=>Math.max(1.1,3.3-l*0.26),
     fire(l,evo){ novaBlast((4.3+l*0.7)*player.area*(evo?1.7:1),(15+l*8)*player.might*(evo?1.8:1)); },
