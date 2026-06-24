@@ -189,6 +189,12 @@
   #muteBtn { position:fixed; top:20px; right:14px; z-index:16; width:38px; height:38px; border-radius:10px;
              background:rgba(8,14,22,.7); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:17px;
              cursor:pointer; pointer-events:auto; -webkit-tap-highlight-color:transparent; }
+  #battlehud { position:fixed; top:58px; left:50%; transform:translateX(-50%); z-index:16; display:none; pointer-events:none;
+               background:rgba(8,14,22,.72); border:1px solid rgba(255,90,110,.5); border-radius:12px; padding:6px 14px;
+               font-size:14px; font-weight:800; color:#fff; white-space:nowrap; text-align:center; text-shadow:0 1px 3px #000; }
+  #battlehud.show { display:block; }
+  #battlehud .ehp { display:inline-block; width:120px; height:8px; border-radius:4px; background:rgba(255,255,255,.15); overflow:hidden; vertical-align:middle; margin:0 6px; }
+  #battlehud .ehp i { display:block; height:100%; background:linear-gradient(90deg,#ff7a85,#ff4d5e); }
   #clogFab { position:fixed; top:20px; right:58px; z-index:16; width:38px; height:38px; border-radius:10px;
              background:rgba(8,14,22,.7); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:17px;
              cursor:pointer; pointer-events:auto; -webkit-tap-highlight-color:transparent; }
@@ -228,6 +234,7 @@
 <button id="muteBtn" title="サウンド切替">🔊</button>
 <button id="clogFab" title="変更ログ">📜</button>
 <button id="shopBtn" title="ショップ（B）">🛒 強化 <span id="shopCount">0</span></button>
+<div id="battlehud"></div>
 
 <div id="hud">
   <div id="xpbar"><div id="xpfill"></div></div>
@@ -268,7 +275,8 @@
     <div id="loadtxt">アセット読み込み中…</div>
 
     <div id="menuButtons" style="display:none; flex-direction:column; gap:14px; align-items:center; margin-top:8px;">
-      <button class="btn" id="coopBtn">👥&nbsp; 2人で遊ぶ</button>
+      <button class="btn" id="coopBtn">👥&nbsp; 2人で協力</button>
+      <button class="btn" id="battleBtn" style="background:linear-gradient(90deg,#ff6a6a,#ff3d6e); box-shadow:0 8px 30px rgba(255,80,110,.3)">⚔️&nbsp; バトル（対戦）</button>
       <button class="btn" id="soloBtn" style="background:linear-gradient(90deg,#8fa3ad,#b9ccd4); box-shadow:0 8px 30px rgba(140,160,170,.3)">🤖&nbsp; 1人で遊ぶ</button>
       <div style="font-size:12px;opacity:.65;margin-top:6px">移動: WASD / 画面下のスティック ・ 武器は自動発射</div>
       <button id="clogBtn" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;opacity:.85;margin-top:2px;text-decoration:underline;pointer-events:auto">📜 変更ログを見る</button>
@@ -296,6 +304,12 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/24 — Build 30</div>
+      <ul>
+        <li>⚔️ <b>バトル（対戦）モード</b>追加：メニューから選択。敵も湧くカオス対戦</li>
+        <li>自動武器が<b>相手にも命中</b>してダメージ。<b>3回やられたら負け</b>（ライフ制）</li>
+        <li>やられても復活（無敵時間あり）。相手のライフ・HPを画面上部に表示</li>
+      </ul>
       <div class="clog-day">6/24 — Build 29</div>
       <ul>
         <li>⚡ <b>全モード軽量化</b>：解像度/影/オブジェクト数を最適化（タッチ端末は特に高速化）</li>
@@ -375,7 +389,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='29';
+const BUILD='30';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -561,6 +575,7 @@ function bladeSpin(rad,dmg){
   const p=player.group.position; shockRing(p,rad,0xffffff); sfx.hit();
   for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-p.x,dz=e.group.position.z-p.z; const d=Math.hypot(dx,dz);
     if(d<rad+e.scale*0.6){ hurtEnemy(e,dmg,dx,dz,d,0.9); } }
+  pvpHurt(p.x,p.z,rad+0.6,dmg);
 }
 
 // =================================================================
@@ -573,6 +588,7 @@ const player={
   hurtCd:0, dashCd:0, dashT:0, lastDir:new THREE.Vector3(0,0,1),
   weapons:{ bolt:1 }, passives:{}, orbMeshes:[], orbLevelCache:0, flameMesh:null, flameCache:0,
   crit:0, amount:0, lifesteal:0, evo:{}, alive:true, down:false, downT:0, reviveP:0, inHouse:false, credits:0,
+  lives:3, deaths:0, invuln:0,   // battle (PvP) mode
 };
 scene.add(player.group);
 
@@ -664,6 +680,7 @@ function novaBlast(radius,dmg){
   const p=player.group.position; shockRing(p,radius,0x9af0ff); sfx.boom(); game.shake=Math.max(game.shake,0.55);
   for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-p.x,dz=e.group.position.z-p.z; const d=Math.hypot(dx,dz);
     if(d<radius+e.scale*0.7){ hurtEnemy(e,dmg,dx,dz,d,1.4); } }
+  pvpHurt(p.x,p.z,radius+0.7,dmg);
 }
 function lightningStrike(e,dmg){ if(e.dead)return; lightningFx(e.group.position); sfx.zap();
   hurtEnemy(e,dmg,0,0,1,0.4); game.shake=Math.max(game.shake,0.18); }
@@ -687,7 +704,8 @@ const WDEF={
   spark:{ name:'チェインスパーク', emoji:'⚡', max:8,
     cd:(l)=>Math.max(0.85,2.3-l*0.18),
     fire(l,evo){ const c=1+Math.floor((l+1)/2)+(player.amount||0)+(evo?4:0); const dmg=(19+l*9)*player.might*(evo?1.6:1);
-      nearestEnemies(c,42).forEach(e=>lightningStrike(e,dmg)); },
+      nearestEnemies(c,42).forEach(e=>lightningStrike(e,dmg));
+      if(mpBattle()&&MP.remote&&MP.remote.present){ const R=MP.remote.group.position, p=player.group.position; if(Math.hypot(R.x-p.x,R.z-p.z)<42){ lightningFx(R); pvpHurt(R.x,R.z,1.6,dmg); } } },
     desc:(l)=>`最大${1+Math.floor((l+2)/2)}体に連鎖 · ダメージ${Math.round((19+(l+1)*9))}` },
   orb:{ name:'オービットガード', emoji:'🛰️', max:8,
     count:(l)=>Math.min(7,2+Math.floor(l/2)), dps:(l)=>(22+l*11)*player.might,
@@ -787,13 +805,13 @@ function killEnemy(e){            // host & solo only (guest never owns enemy li
 function flashScreen(){ const f=document.getElementById('flashfx'); f.style.opacity='0.7'; setTimeout(()=>f.style.opacity='0',90); }
 
 function hurtPlayer(n){
-  if(!player.alive||player.down||player.hurtCd>0)return;   // invulnerable while downed (bleed-out timer handles it)
+  if(!player.alive||player.down||player.hurtCd>0||player.invuln>0||player.inHouse)return;   // invulnerable while downed/respawning/sheltering
   const dmg=Math.max(1,n-player.armor);
   player.hp-=dmg; player.hurtCd=0.5; sfx.hurt();
   document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
   floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78');
   game.shake=Math.max(game.shake,0.25);
-  if(player.hp<=0){ player.hp=0; if(MP.joined) goDown(); else die(); }   // co-op: go down instead of instant game-over
+  if(player.hp<=0){ player.hp=0; if(mpBattle()) battleDeath(); else if(MP.joined) goDown(); else die(); }   // battle: lose a life; co-op: go down; solo: game over
   refreshHUD();
 }
 
@@ -998,8 +1016,9 @@ const overlay=document.getElementById('overlay'),startcard=document.getElementBy
 const menuButtons=document.getElementById('menuButtons'), lobbyView=document.getElementById('lobbyView'), lobbyStatus=document.getElementById('lobbyStatus');
 function showMenu(){ game.state='menu'; menuButtons.style.display='flex'; lobbyView.style.display='none';
   overlay.classList.remove('hidden'); startcard.classList.remove('hidden'); startcard.style.display='block'; }
-document.getElementById('soloBtn').onclick=()=>{ sfx.init(); MP.enabled=false; startGame(); };
-document.getElementById('coopBtn').onclick=()=>{ sfx.init(); start2P(); };
+document.getElementById('soloBtn').onclick=()=>{ sfx.init(); MP.enabled=false; MP.mode='coop'; startGame(); };
+document.getElementById('coopBtn').onclick=()=>{ sfx.init(); start2P('coop'); };
+document.getElementById('battleBtn').onclick=()=>{ sfx.init(); start2P('battle'); };
 document.getElementById('cancelBtn').onclick=()=>{ mpLeave(); showMenu(); };
 document.getElementById('lobbySoloBtn').onclick=()=>{ mpLeave(); MP.enabled=false; startGame(); };   // escape hatch: never stuck waiting
 document.getElementById('muteBtn').onclick=()=>{ sfx.init(); const m=sfx.toggleMute(); document.getElementById('muteBtn').textContent=m?'🔇':'🔊'; };
@@ -1018,9 +1037,9 @@ document.getElementById('respawnbtn').onclick=()=>{
   }
 };
 
-function start2P(){ menuButtons.style.display='none'; lobbyView.style.display='block'; game.state='lobby';
-  if(lobbyStatus)lobbyStatus.textContent='🟡 マッチング中…';
-  mpInit().then(()=>{ if(game.state==='lobby'&&lobbyStatus) lobbyStatus.textContent = MP.enabled?'🟡 相手を待っています…':'⚠ 接続できませんでした'; }); }
+function start2P(mode){ MP.mode = mode||'coop'; menuButtons.style.display='none'; lobbyView.style.display='block'; game.state='lobby';
+  if(lobbyStatus)lobbyStatus.textContent = (MP.mode==='battle'?'⚔ バトル — ':'')+'🟡 マッチング中…';
+  mpInit().then(()=>{ if(game.state==='lobby'&&lobbyStatus) lobbyStatus.textContent = MP.enabled?((MP.mode==='battle'?'⚔ バトル — ':'')+'🟡 相手を待っています…'):'⚠ 接続できませんでした'; }); }
 
 // leave the multiplayer room cleanly (used by the lobby "back" button)
 function mpLeave(){ const D=MP._D;
@@ -1044,11 +1063,13 @@ function resetGame(){
   meteors.forEach(m=>{ scene.remove(m.m); scene.remove(m.tel); }); meteors.length=0;
   Object.assign(player,{ hp:100,maxhp:100,level:1,xp:0,xpNext:5,
     moveSpeed:8.5,might:1.2,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,crit:0,amount:0,lifesteal:0,evo:{},
-    hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0,inHouse:false,credits:0 });
+    hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0,inHouse:false,credits:0,lives:3,deaths:0,invuln:0 });
   if(MP.enabled&&MP.joined) mpSendHouse(false);   // make sure I'm not stuck "in the house" after a reset
+  if(player.model) player.model.visible=true;
   player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
   const _lu=document.getElementById('levelup'); _lu.classList.remove('show','mp','house','shop');   // clear any open shop
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0,picking:false,shopping:false });
+  if(mpBattle()){ MP.remoteLives=3; mpSendLives(); updateBattleHud(); }   // fresh lives for a rematch
   updateShopBtn();
   weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0; weaponTimers.meteor=0; weaponTimers.blade=0; weaponTimers.chakram=0;
   if(player.actions['Death'])player.actions['Death'].stop(); player.current=null; fade('Idle',0);
@@ -1058,6 +1079,9 @@ function resetGame(){
 function die(){ player.alive=false; player.down=false; game.state='dead'; game.shopping=false;
   document.getElementById('levelup').classList.remove('show','mp','house','shop');   // close the shop on death
   player.inHouse=false; mpSendHouse(false); updateShopBtn();   // never die while "in the house"
+  document.querySelector('#deathcard .tag').textContent='システムダウン';   // restore the normal death text (battle mode overwrites it)
+  document.querySelector('#deathcard h1').textContent='やられた…';
+  document.querySelector('#deathcard p').textContent='Unit 7 は機能停止した。群れは止まらない…';
   fade('Death',0.2); sfx.musicStop();
   document.getElementById('d_time').textContent=fmtTime(game.time);
   document.getElementById('d_lvl').textContent=player.level;
@@ -1133,6 +1157,8 @@ function update(dt){
     if(player.mixer){ if(moving)fade(player.dashT>0?'Running':'Running',0.15); else fade('Idle',0.2); }
 
     player.hurtCd=Math.max(0,player.hurtCd-dt);
+    player.invuln=Math.max(0,player.invuln-dt);   // battle respawn shield
+    if(player.model) player.model.visible = player.invuln>0 ? (Math.floor(game.time*12)%2===0) : true;   // flash while invulnerable
     if(player.regen>0&&player.hp<player.maxhp){ player.hp=Math.min(player.maxhp,player.hp+player.regen*dt); refreshHUD(); }
 
     if(!player.down && !player.inHouse){   // weapons fire only while up and out of the house
@@ -1152,6 +1178,7 @@ function update(dt){
       fm.material.opacity=0.25+0.12*Math.abs(Math.sin(game.time*4));
       for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-player.group.position.x,dz=e.group.position.z-player.group.position.z;
         const d=Math.hypot(dx,dz); if(d<R+e.scale*0.5){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
+      pvpHurt(player.group.position.x,player.group.position.z,R+0.5,dps*dt);
     } else if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; }
 
     // ---- weapon: orbit guard (continuous) ----
@@ -1165,7 +1192,8 @@ function update(dt){
       player.orbMeshes.forEach((o,i)=>{ const a=game._orbA+i/want*TAU;
         o.position.set(player.group.position.x+Math.cos(a)*R,1.0,player.group.position.z+Math.sin(a)*R);
         for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-o.position.x,dz=e.group.position.z-o.position.z;
-          const d=Math.hypot(dx,dz); if(d<0.55+e.scale*0.6){ hurtEnemy(e,dps*dt,dx,dz,d,0); } } });
+          const d=Math.hypot(dx,dz); if(d<0.55+e.scale*0.6){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
+        pvpHurt(o.position.x,o.position.z,0.6,dps*dt); });
     }
     }   // end: weapons (skipped while downed)
 
@@ -1179,6 +1207,10 @@ function update(dt){
       const dx=e.group.position.x-pr.m.position.x,dz=e.group.position.z-pr.m.position.z; const d=Math.hypot(dx,dz);
       if(d<0.5+e.scale*0.65){ pr.hit.add(e); hurtEnemy(e,pr.dmg,pr.vel.x,pr.vel.z,Math.hypot(pr.vel.x,pr.vel.z),0.6);
         burst(pr.m.position.clone(),0x9af0ff,5,0.6); pr.pierce--; if(pr.pierce<0)break; } }
+    // battle: this projectile can also hit the opponent (once)
+    if(mpBattle() && !pr.hit.has('P') && MP.remote && MP.remote.present && !mpRemoteInHouse()){
+      const rx=MP.remote.group.position.x-pr.m.position.x, rz=MP.remote.group.position.z-pr.m.position.z;
+      if(rx*rx+rz*rz < 0.85*0.85){ pr.hit.add('P'); pvpHurt(pr.m.position.x,pr.m.position.z,0.85,pr.dmg); pr.pierce--; } }
     if(pr.pierce<0||pr.life>2.6||Math.hypot(pr.m.position.x-player.group.position.x,pr.m.position.z-player.group.position.z)>70){
       scene.remove(pr.m); projectiles.splice(i,1); }
   }
@@ -1244,6 +1276,7 @@ function update(dt){
     me.m.position.y=15*(1-k)+0.5; me.m.rotation.x+=dt*6; me.m.rotation.y+=dt*5; me.tel.material.opacity=0.5*Math.sin(k*Math.PI)+0.12;
     if(k>=1){ shockRing(new THREE.Vector3(me.tx,0,me.tz),me.rad,0xff7a3c); burst(new THREE.Vector3(me.tx,0.6,me.tz),0xff7a3c,18,1.3); game.shake=Math.max(game.shake,0.4); sfx.boom();
       for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-me.tx,dz=e.group.position.z-me.tz; const d=Math.hypot(dx,dz); if(d<me.rad+e.scale*0.6){ hurtEnemy(e,me.dmg,dx,dz,d,1.2); } }
+      pvpHurt(me.tx,me.tz,me.rad+0.6,me.dmg);
       scene.remove(me.m); scene.remove(me.tel); meteors.splice(i,1); } }
   for(const c of crystals)c.rotation.y+=dt*0.6;
 
@@ -1285,9 +1318,18 @@ const firebaseConfig = {
 
 const MP = { enabled:false, db:null, _D:null, roomId:null, role:null, mySlot:null, otherSlot:null,
   joined:false, remote:null, lastWrite:0, teamKills:0, sharedTime:0, _rematching:false,
-  netMap:{}, dmgAccum:{}, _appliedRole:null, remoteAtk:null, remoteHouse:null };
+  netMap:{}, dmgAccum:{}, _appliedRole:null, remoteAtk:null, remoteHouse:null,
+  mode:'coop', pvpAccum:0, remoteLives:3, remoteDeaths:0 };   // battle (PvP) mode state
+function mpBattle(){ return MP.enabled && MP.joined && MP.mode==='battle'; }
 const mpbadge = document.getElementById('mpbadge');
 function setBadge(t,c){ if(!mpbadge)return; mpbadge.textContent=t; mpbadge.style.borderColor=c||'rgba(70,224,200,.4)'; mpbadge.style.display='block'; }
+function updateBattleHud(){ const el=document.getElementById('battlehud'); if(!el)return;
+  if(!mpBattle()){ el.classList.remove('show'); return; }
+  el.classList.add('show');
+  const heart=(n)=>'❤'.repeat(Math.max(0,Math.min(3,n)))+'🖤'.repeat(Math.max(0,3-Math.min(3,Math.max(0,n))));
+  const rd=(MP.remote&&MP.remote.data)||{}; const ehp=rd.mhp?clamp(rd.hp/rd.mhp*100,0,100):100;
+  el.innerHTML=`自分 ${heart(player.lives)} <span class="ehp"><i style="width:${clamp(player.hp/player.maxhp*100,0,100)}%"></i></span> ⚔ <span class="ehp"><i style="width:${ehp}%"></i></span> ${heart(MP.remoteLives)} 相手`;
+}
 
 async function mpInit(){
   if(!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('PASTE')) return;   // no config → stay solo, no badge
@@ -1306,7 +1348,7 @@ async function mpMatchmake(){
   const D=MP._D, db=MP.db;
   const newId = D.push(D.child(D.ref(db),'rooms')).key;
   let prevRoom=null;
-  const res = await D.runTransaction(D.ref(db,'lobby/openRoom'),(cur)=>{
+  const res = await D.runTransaction(D.ref(db,'lobby/open_'+(MP.mode||'coop')),(cur)=>{
     const now=Date.now();
     if(cur && cur.id && (now-(cur.ts||0)<25000)){ prevRoom=cur.id; return null; }  // fresh waiting room → I join it
     return { id:newId, ts:now };                                                    // none → I host & advertise
@@ -1324,7 +1366,7 @@ async function mpMatchmake(){
       const pointerAge = Date.now() - ((committed&&committed.ts)||0);   // how long ago the host claimed this room
       const okToJoin = p1Fresh || (!hasP1 && pointerAge < 7000);        // alive host, or host still initializing
       if(!okToJoin){ MP.role='host'; MP.roomId=newId; MP.mySlot='p1'; MP.otherSlot='p2';
-        D.set(D.ref(db,'lobby/openRoom'), { id:newId, ts:Date.now() }); }   // ghost room → become a fresh host instead
+        D.set(D.ref(db,'lobby/open_'+(MP.mode||'coop')), { id:newId, ts:Date.now() }); }   // ghost room → become a fresh host instead
     }catch(e){}
   }
   mpEnterRoom();
@@ -1371,6 +1413,15 @@ function mpEnterRoom(){
   MP._D.onDisconnect(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.mySlot}`)).remove();   // drop my house flag if I leave
   if(MP._unsubHouse){MP._unsubHouse();MP._unsubHouse=null;}
   MP._unsubHouse=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/house_${MP.otherSlot}`),(s)=>{ MP.remoteHouse=s.val(); MP._remoteHouseAt=Date.now(); });   // record OUR arrival time (skew-proof freshness)
+  // ---- battle (PvP): incoming hits land on MY hp; track opponent's lives → I win when they hit 0 ----
+  if(MP._unsubPvp){MP._unsubPvp();MP._unsubPvp=null;}
+  if(MP._unsubLives){MP._unsubLives();MP._unsubLives=null;}
+  if(mpBattle()){
+    MP._unsubPvp=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/state/pvp_${MP.mySlot}`), mpOnPvpHit);
+    MP._unsubLives=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/lives_${MP.otherSlot}`),(s)=>{ const v=s.val();
+      if(v){ MP.remoteLives=(typeof v.lv==='number')?v.lv:3; if(MP.remoteLives<=0 && game.state!=='dead') battleEnd(true); } });
+    player.lives=3; player.deaths=0; mpSendLives();
+  }
   mpEnsureSelfTag();   // show "プレイヤーN" over my own character
   setBadge('🟡 相手を待っています…','#ffcf3a');
   // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
@@ -1391,10 +1442,10 @@ function mpHeartbeat(){
   if(alone){
     MP._aloneTicks=(MP._aloneTicks||0)+1;
     if(MP.mySlot==='p2' && MP._aloneTicks>=2){ MP._aloneTicks=0; mpResetAndRematch(); return; }  // host vanished → re-host (wait 2 ticks to avoid churn)
-    D.set(D.ref(db,'lobby/openRoom'), { id:MP.roomId, ts:Date.now() });  // advertise for a 2nd player
+    D.set(D.ref(db,'lobby/open_'+(MP.mode||'coop')), { id:MP.roomId, ts:Date.now() });  // advertise for a 2nd player
   } else {
     MP._aloneTicks=0;
-    D.runTransaction(D.ref(db,'lobby/openRoom'),(cur)=> (cur&&cur.id===MP.roomId)?null:cur );  // paired → stop advertising
+    D.runTransaction(D.ref(db,'lobby/open_'+(MP.mode||'coop')),(cur)=> (cur&&cur.id===MP.roomId)?null:cur );  // paired → stop advertising
   }
 }
 
@@ -1542,6 +1593,8 @@ function mpTick(dt){
   const now=performance.now();
   if(now-MP.lastWrite>80){ MP.lastWrite=now; try{ MP._D.update(MP._meRef, mpMyPayload()); }catch(e){} }
   if(player.inHouse && now-(MP._lastHouseHB||0)>2000){ MP._lastHouseHB=now; mpSendHouse(true); }   // keep house flag fresh while picking (freshness window is 5s)
+  if(mpBattle() && now-(MP._lastPvp||0)>140){ MP._lastPvp=now; pvpFlush(); }   // battle: send banked PvP damage to the opponent
+  if(now-(MP._lastBhud||0)>150){ MP._lastBhud=now; updateBattleHud(); }
   if(MP.role==='host' && now-(MP._lastTW||0)>1000){ MP._lastTW=now; try{ MP._D.set(MP._timeRef, +game.time.toFixed(1)); }catch(e){} }
   // shared-enemy sync
   if(MP._appliedRole!==MP.role){ MP._appliedRole=MP.role; mpClearAllEnemies(); mpClearRemoteAtkMeshes(); }   // wipe local lists on role flip
@@ -1588,6 +1641,47 @@ function mpOnDmgEvent(snap){
   const v=snap.val();
   if(v&&v.h){ for(const id in v.h){ const e=enemies.find(x=>x.id===id&&!x.dead); if(e){ e.hp-=v.h[id]; e.hurtFlash=0.12; if(e.hp<=0) killEnemy(e); } } }
   try{ MP._D.remove(snap.ref); }catch(e){}
+}
+
+// ===================== ⚔ BATTLE (PvP): auto-weapons hit the opponent · 3 deaths = lose =====================
+// my attack landed at (cx,cz,radius) → if the opponent is inside, bank PvP damage (don't hit someone sheltering in the shop)
+function pvpHurt(cx,cz,radius,dmg){
+  if(!mpBattle()) return; const R=MP.remote; if(!(R&&R.present)||mpRemoteInHouse()) return;
+  const dx=R.group.position.x-cx, dz=R.group.position.z-cz;
+  if(dx*dx+dz*dz < radius*radius){ MP.pvpAccum=(MP.pvpAccum||0)+dmg;
+    if(performance.now()-(MP._pvpFxT||0)>110){ MP._pvpFxT=performance.now(); burst(R.group.position.clone().add(new THREE.Vector3(0,1,0)),0xff5a6e,5,0.7); } }
+}
+function pvpFlush(){ if(!mpBattle()||!(MP.pvpAccum>0)) return; const d=Math.round(MP.pvpAccum); MP.pvpAccum=0;
+  try{ MP._D.push(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/pvp_${MP.otherSlot}`), {d}); }catch(e){} }
+function mpOnPvpHit(snap){ const v=snap.val(); try{ MP._D.remove(snap.ref); }catch(e){}
+  if(v&&v.d&&mpBattle()&&player.alive&&player.invuln<=0&&!player.inHouse) takePvpDamage(v.d); }
+function takePvpDamage(d){
+  const dmg=Math.max(1,d-player.armor); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);
+  document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
+  floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78'); game.shake=Math.max(game.shake,0.25); refreshHUD();
+  if(player.hp<=0){ player.hp=0; battleDeath(); }
+}
+function mpSendLives(){ if(!(MP.enabled&&MP.joined)) return; try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/lives_${MP.mySlot}`), {lv:player.lives, t:Date.now()}); }catch(e){} }
+function battleDeath(){
+  player.deaths=(player.deaths||0)+1; player.lives=Math.max(0,3-player.deaths); mpSendLives();
+  deathFx(player.group.position.x, player.group.position.z, false, 0xff5a6e); sfx.boss(); game.shake=Math.max(game.shake,0.6);
+  if(player.lives<=0){ battleEnd(false); return; }     // out of lives → I lose
+  const a=Math.random()*TAU, dist=rand(20,30);          // respawn far away, full HP, brief invulnerability
+  player.group.position.set(Math.cos(a)*dist,0,Math.sin(a)*dist);
+  player.hp=player.maxhp; player.invuln=2.5; player.hurtCd=2.5; refreshHUD();
+  toast(`💀 やられた！ 残りライフ ${player.lives}`,'bad');
+}
+function battleEnd(won){
+  if(game.state==='dead') return;
+  game.state='dead'; game.shopping=false; player.alive=!!won;
+  document.getElementById('levelup').classList.remove('show','mp','house','shop'); updateShopBtn();
+  if(!won) fade('Death',0.2); sfx.musicStop();
+  document.querySelector('#deathcard .tag').textContent = won?'勝利':'敗北';
+  document.querySelector('#deathcard h1').textContent = won?'🏆 YOU WIN!':'💀 YOU LOSE';
+  document.querySelector('#deathcard p').textContent = won?'相手を倒した！リブートで再戦':'ライフが尽きた…リブートで再戦';
+  document.getElementById('d_time').textContent=fmtTime(game.time);
+  document.getElementById('d_lvl').textContent=player.level; document.getElementById('d_kills').textContent=game.kills;
+  setTimeout(()=>{ overlay.classList.remove('hidden'); deathcard.classList.remove('hidden'); deathcard.style.display='block'; },1000);
 }
 
 // HOST → GUEST: broadcast a snapshot of enemies near EITHER player (so the guest's area is covered too),
