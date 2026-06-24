@@ -260,7 +260,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='17';
+const BUILD='18';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1265,7 +1265,13 @@ function mpTick(dt){
   // shared-enemy sync
   if(MP._appliedRole!==MP.role){ MP._appliedRole=MP.role; mpClearAllEnemies(); }   // wipe local list on role flip
   if(MP.role==='host'){ if(now-(MP._lastEnem||0)>140){ MP._lastEnem=now; mpBroadcastEnemies(); } }
-  else { if(now-(MP._lastDmgFlush||0)>120){ MP._lastDmgFlush=now; mpFlushDmg(); } }
+  else {
+    if(now-(MP._lastDmgFlush||0)>120){ MP._lastDmgFlush=now; mpFlushDmg(); }
+    // grace removal: drop net enemies not refreshed for 0.8s (prevents flicker when they leave the broadcast set)
+    for(const id in MP.netMap){ const e=MP.netMap[id]; if(now-(e._seen||0)>800){ e.dead=true; scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[id]; } }
+    // vanished host: no fresh enemy snapshot for 3s → the host's device slept/left. Re-matchmake (usually become host) so play continues.
+    if(MP._enemSnapT && Date.now()-MP._enemSnapT>3000 && !MP._rematching && game.state==='playing'){ mpResetAndRematch(); }
+  }
   // live co-op status badge — lets players (and us) see the enemy sync is flowing
   if(MP.remote && MP.remote.present && game.state!=='lobby' && now-(MP._lastBadge||0)>600){ MP._lastBadge=now;
     if(MP.role==='host'){ let n=0; for(const e of enemies) if(!e.net) n++; setBadge(`🟢 ホスト · 敵${n}体配信中`,'#46e0c8'); }
@@ -1299,12 +1305,16 @@ function mpOnDmgEvent(snap){
   try{ MP._D.remove(snap.ref); }catch(e){}
 }
 
-// HOST → GUEST: broadcast a compact snapshot of the nearest enemies
+// HOST → GUEST: broadcast a snapshot of enemies near EITHER player (so the guest's area is covered too),
+// with a freshness timestamp so the guest can tell if the host has stopped (device slept).
 function mpBroadcastEnemies(){
   if(!MP.joined||MP.role!=='host') return;
-  const p=player.group.position; const arr=[];
-  for(const e of enemies){ if(e.dead)continue; arr.push([(e.group.position.x-p.x)**2+(e.group.position.z-p.z)**2, e]); }
-  arr.sort((a,b)=>a[0]-b[0]); const out={}; const n=Math.min(48,arr.length);
+  const hx=player.group.position.x, hz=player.group.position.z;
+  let gx=hx, gz=hz; if(MP.remote&&MP.remote.present&&MP.remote.data){ gx=MP.remote.data.x; gz=MP.remote.data.z; }
+  const arr=[];
+  for(const e of enemies){ if(e.dead)continue; const ex=e.group.position.x, ez=e.group.position.z;
+    arr.push([Math.min((ex-hx)**2+(ez-hz)**2,(ex-gx)**2+(ez-gz)**2), e]); }   // rank by distance to the NEARER player
+  arr.sort((a,b)=>a[0]-b[0]); const out={ _t:Date.now() }; const n=Math.min(60,arr.length);
   for(let i=0;i<n;i++){ const e=arr[i][1]; out[e.id]={x:+e.group.position.x.toFixed(1),z:+e.group.position.z.toFixed(1),k:e.ki,b:e.boss?1:0}; }
   try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/enemies`), out); }catch(e){}
 }
@@ -1324,11 +1334,13 @@ function mpMakeNetEnemy(id,d){
   enemies.push(e); MP.netMap[id]=e; return e;
 }
 function mpReconcileEnemies(data){
-  data=data||{};
-  for(const id in data){ const d=data[id]; const e=MP.netMap[id];
-    if(!e) mpMakeNetEnemy(id,d); else { e.netTarget.x=d.x; e.netTarget.z=d.z; } }
-  for(const id in MP.netMap){ if(!(id in data)){ const e=MP.netMap[id]; e.dead=true; scene.remove(e.group);
-    const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[id]; } }
+  data=data||{}; const now=performance.now();
+  MP._enemSnapT = data._t || 0;   // host's broadcast time (used to detect a vanished host)
+  for(const id in data){ if(id==='_t')continue; const d=data[id]; let e=MP.netMap[id];
+    if(!e) e=mpMakeNetEnemy(id,d); else { e.netTarget.x=d.x; e.netTarget.z=d.z; }
+    e._seen=now; }
+  // NOTE: absent enemies are NOT removed here — a grace timer in mpTick handles it, so they don't flicker
+  // when they briefly drop out of the broadcast set. Real kills are removed instantly via death events.
 }
 // HOST emits a death so the guest gets FX + its own XP shard; GUEST consumes it
 function mpEmitDeath(e){
