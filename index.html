@@ -260,7 +260,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='19';
+const BUILD='20';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1141,12 +1141,17 @@ async function mpMatchmake(){
   const committed = res.snapshot.val();
   if(committed && committed.id===newId){ MP.role='host';  MP.roomId=newId;          MP.mySlot='p1'; MP.otherSlot='p2'; }
   else                                 { MP.role='guest'; MP.roomId=prevRoom||newId; MP.mySlot='p2'; MP.otherSlot='p1'; }
-  // don't join a DEAD room: if the would-be host has no recent presence, it's a ghost room → host a fresh one instead
+  // don't join a DEAD room: if the would-be host has no recent presence, it's a ghost room → host a fresh one instead.
+  // but DON'T misjudge a brand-new room: a host that just claimed the pointer may not have written players/p1 yet
+  // (both players tapping at once) — give a freshly-claimed room the benefit of the doubt so we don't double-host.
   if(MP.role==='guest'){
     try{ const hs=await D.get(D.ref(db,`rooms/${MP.roomId}/players/p1`));
-      const aliveHost = hs.exists() && hs.val().t && (Date.now()-hs.val().t < 12000);
-      if(!aliveHost){ MP.role='host'; MP.roomId=newId; MP.mySlot='p1'; MP.otherSlot='p2';
-        D.set(D.ref(db,'lobby/openRoom'), { id:newId, ts:Date.now() }); }   // become a fresh host instead
+      const hasP1 = hs.exists() && hs.val().t;
+      const p1Fresh = hasP1 && (Date.now()-hs.val().t < 12000);
+      const pointerAge = Date.now() - ((committed&&committed.ts)||0);   // how long ago the host claimed this room
+      const okToJoin = p1Fresh || (!hasP1 && pointerAge < 7000);        // alive host, or host still initializing
+      if(!okToJoin){ MP.role='host'; MP.roomId=newId; MP.mySlot='p1'; MP.otherSlot='p2';
+        D.set(D.ref(db,'lobby/openRoom'), { id:newId, ts:Date.now() }); }   // ghost room → become a fresh host instead
     }catch(e){}
   }
   mpEnterRoom();
