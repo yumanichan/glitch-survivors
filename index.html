@@ -260,7 +260,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='16';
+const BUILD='17';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1266,6 +1266,11 @@ function mpTick(dt){
   if(MP._appliedRole!==MP.role){ MP._appliedRole=MP.role; mpClearAllEnemies(); }   // wipe local list on role flip
   if(MP.role==='host'){ if(now-(MP._lastEnem||0)>140){ MP._lastEnem=now; mpBroadcastEnemies(); } }
   else { if(now-(MP._lastDmgFlush||0)>120){ MP._lastDmgFlush=now; mpFlushDmg(); } }
+  // live co-op status badge — lets players (and us) see the enemy sync is flowing
+  if(MP.remote && MP.remote.present && game.state!=='lobby' && now-(MP._lastBadge||0)>600){ MP._lastBadge=now;
+    if(MP.role==='host'){ let n=0; for(const e of enemies) if(!e.net) n++; setBadge(`🟢 ホスト · 敵${n}体配信中`,'#46e0c8'); }
+    else { const n=Object.keys(MP.netMap).length; setBadge(`🟢 ゲスト · 敵${n}体受信`, n>0?'#46e0c8':'#ff9a3c'); }
+  }
   const R=MP.remote;
   if(R && R.present){
     R.group.position.lerp(R.target, Math.min(1,dt*10));
