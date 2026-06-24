@@ -86,8 +86,10 @@
   /* ---------- overlays ---------- */
   #overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
              background:radial-gradient(ellipse at center,rgba(12,20,30,.82),rgba(5,8,12,.96)); text-align:center;
-             overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain; padding:16px 0; }
+             overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:manipulation; overscroll-behavior:contain; padding:16px 0; }
   #overlay > .card { margin:auto; }   /* keeps the card centered, and reachable by scroll if it ever overflows a tiny screen */
+  /* disable iOS double-tap-to-zoom on all interactive UI (manipulation = taps + scroll OK, no zoom) */
+  button, .btn, .ucard, .shopcard, #shopBtn, #clogFab, #muteBtn, #changelog, .clog-body, #joybase { touch-action:manipulation; }
   #overlay.hidden { display:none; }
   .card { max-width:600px; padding:30px 40px; }
   .card h1 { font-size:42px; font-weight:800; letter-spacing:.5px;
@@ -162,7 +164,7 @@
   #levelup.shop h2, #levelup.shop .sub { flex:0 0 auto; }
   #levelup.shop #cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); gap:8px;
         width:100%; max-width:820px; flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
-        align-items:stretch; align-content:start; touch-action:pan-y; }
+        align-items:stretch; align-content:start; touch-action:manipulation; }
   #levelup.shop .shopcard { min-height:96px; padding:10px 6px; position:relative; }
   #levelup.shop .shopcard .ic { font-size:26px; margin-bottom:3px; }
   #levelup.shop .shopcard .nm { font-size:12.5px; }
@@ -318,6 +320,14 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 40</div>
+      <ul>
+        <li>🔊 発射音を新しい音に変更</li>
+        <li>📱 2回タップで拡大（ダブルタップズーム）を無効化</li>
+        <li>⚔️ バトルは左右(P1左/P2右)から開始・向かい合ってスタート</li>
+        <li>🌳 敵も家・木・岩に当たるように。弾も壁を貫通しない（攻撃・敵が壁をすり抜けない）</li>
+        <li>協力プレイの進行はそのまま</li>
+      </ul>
       <div class="clog-day">6/25 — Build 39</div>
       <ul>
         <li>🍎 回復アイテム（ハート）のドロップを半分に（4%→2%）</li>
@@ -431,7 +441,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='39';
+const BUILD='40';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -532,7 +542,7 @@ const sfx=(function(){
     master=ctx.createGain(); master.gain.value=0.16; master.connect(ctx.destination);
     mgain=ctx.createGain(); mgain.gain.value=0.05; mgain.connect(ctx.destination);
     // custom firing sound: decode once; played via a fresh buffer source each shot so rapid fire overlaps cleanly
-    if(!shootBuf){ fetch('shoot.mp3').then(r=>r.arrayBuffer()).then(a=>ctx.decodeAudioData(a)).then(b=>{shootBuf=b;}).catch(()=>{}); } }
+    if(!shootBuf){ fetch('shoot.m4a').then(r=>r.arrayBuffer()).then(a=>ctx.decodeAudioData(a)).then(b=>{shootBuf=b;}).catch(()=>{}); } }
   function tone(f,dur,type,vol,slideTo,t0){
     if(!ctx)return; const o=ctx.createOscillator(),g=ctx.createGain();
     o.type=type||'square'; o.frequency.setValueAtTime(f,t0||ctx.currentTime);
@@ -1103,8 +1113,12 @@ function mpLeave(){ const D=MP._D;
   clearInterval(MP._hb); MP.joined=false; MP.enabled=false; MP.role=null; MP._appliedRole=null;
   if(MP.remote)mpDestroyRemote(); mpClearAllEnemies(); if(mpbadge)mpbadge.style.display='none'; }
 
+// battle: start on opposite sides (p1 left / p2 right) facing each other
+function battleSpawn(){ const side = MP.mySlot==='p1'? -1 : 1; player.group.position.set(side*30,0,0);
+  player.lastDir.set(-side,0,0); player.group.rotation.y=Math.atan2(-side,0); }
 function startGame(){ startcard.classList.add('hidden'); startcard.style.display='none'; overlay.classList.add('hidden');
   game.state='playing'; player.down=false; document.getElementById('downed').style.display='none';
+  if(mpBattle()) battleSpawn();
   sfx.musicStart(); renderLoadout(); refreshHUD(); updateShopBtn(); toast(MP.joined?'対戦開始！ ⚔':'サバイブ！ ⚔','gold'); }
 
 function resetGame(){
@@ -1123,7 +1137,7 @@ function resetGame(){
   player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
   const _lu=document.getElementById('levelup'); _lu.classList.remove('show','mp','house','shop'); _lu.style.height='';   // clear any open shop
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0,picking:false,shopping:false });
-  if(mpBattle()){ MP.remoteLives=3; mpSendLives(); updateBattleHud(); }   // fresh lives for a rematch
+  if(mpBattle()){ MP.remoteLives=3; mpSendLives(); updateBattleHud(); battleSpawn(); }   // fresh lives + opposite-side spawn for a rematch
   updateShopBtn();
   weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0; weaponTimers.meteor=0; weaponTimers.blade=0; weaponTimers.chakram=0;
   if(player.actions['Death'])player.actions['Death'].stop(); player.current=null; fade('Idle',0);
@@ -1270,6 +1284,9 @@ function update(dt){
     if(mpBattle() && !pr.hit.has('P') && MP.remote && MP.remote.present && !mpRemoteInHouse()){
       const rx=MP.remote.group.position.x-pr.m.position.x, rz=MP.remote.group.position.z-pr.m.position.z;
       if(rx*rx+rz*rz < 0.85*0.85){ pr.hit.add('P'); pvpHurt(pr.m.position.x,pr.m.position.z,0.85,pr.dmg); pr.pierce--; } }
+    // blocked by houses/trees/rocks — attacks don't pass through walls
+    if(pr.pierce>=0){ for(const o of obstacles){ const ox=pr.m.position.x-o.x, oz=pr.m.position.z-o.z; const min=o.r+0.15;
+      if(ox*ox+oz*oz < min*min){ pr.pierce=-1; burst(pr.m.position.clone(),0x9af0ff,4,0.5); break; } } }
     if(pr.pierce<0||pr.life>2.6||Math.hypot(pr.m.position.x-player.group.position.x,pr.m.position.z-player.group.position.z)>70){
       scene.remove(pr.m); projectiles.splice(i,1); }
   }
@@ -1297,6 +1314,9 @@ function update(dt){
       if(game.state==='playing' && tx!==null){   // tx===null = everyone is in the house → enemy just waits in place
         const dx=tx-e.group.position.x, dz=tz-e.group.position.z, d=Math.hypot(dx,dz);
         if(d>0.01){ const sp=e.speed; e.group.position.x+=dx/d*sp*dt; e.group.position.z+=dz/d*sp*dt; e.group.rotation.y=Math.atan2(dx,dz); } }
+      // enemies collide with houses/trees/rocks too (host/solo authority) — pushed out so they can't walk through
+      for(const o of obstacles){ const ox=e.group.position.x-o.x, oz=e.group.position.z-o.z; const min=o.r+e.scale*0.45; const dd=ox*ox+oz*oz;
+        if(dd<min*min && dd>0.0001){ const od=Math.sqrt(dd), push=min-od; e.group.position.x+=ox/od*push; e.group.position.z+=oz/od*push; } }
       if(game.state==='playing'&&player.alive&&!meIn){   // contact damage to me only if I'm outside
         const dme=Math.hypot(player.group.position.x-e.group.position.x, player.group.position.z-e.group.position.z);
         if(dme<1.1+e.scale*0.6&&e.atkCd<=0){ hurtPlayer(e.dmg); e.atkCd=0.6; } }
@@ -1804,7 +1824,7 @@ addEventListener('load',()=>{ fitViewport(); setTimeout(fitViewport,250); });
 if(window.visualViewport) visualViewport.addEventListener('resize',fitViewport);   // mobile address-bar show/hide
 setTimeout(fitViewport,200); setTimeout(fitViewport,800);   // catch the mobile viewport once it settles (fixes "weird until you scroll")
 
-window.__rpg={player,enemies,shards,projectiles,game,WDEF,PDEF,openShop,closeShop,buyCard,spawnRing,addXP,MP,update};
+window.__rpg={player,enemies,shards,projectiles,game,WDEF,PDEF,openShop,closeShop,buyCard,spawnRing,addXP,MP,update,obstacles};
 // matchmaking now starts only when the player picks "2人で遊ぶ" from the menu (see start2P)
 </script>
 </body>
