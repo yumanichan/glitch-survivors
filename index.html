@@ -318,6 +318,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 34</div>
+      <ul>
+        <li>🎨 アート方向を「ほのぼのローポリ・ファンタジー」に統一（フェーズ1）</li>
+        <li>暖かい昼の光・空、敵をやさしいパステルに、弾やXPを金色の魔法系に、クリスタルを琥珀色に、きのこを追加</li>
+      </ul>
       <div class="clog-day">6/24 — Build 33</div>
       <ul>
         <li>🛒 スマホ（iOS）でショップが潰れて重なる不具合を修正：開いた瞬間にレイアウトを強制再計算（触らなくても直る）</li>
@@ -413,7 +418,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='33';
+const BUILD='34';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -429,18 +434,19 @@ const LOWP = !!(window.matchMedia && matchMedia('(pointer:coarse)').matches);
 const renderer=new THREE.WebGLRenderer({antialias:!LOWP,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio, LOWP?1.5:2));
 renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;   // perf: PCF is cheaper per-pixel than PCFSoft, still smooth for this art
+renderer.shadowMap.autoUpdate=false;   // perf: don't re-render the shadow map every frame — animate() refreshes it ~20fps instead of 60
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
 app.appendChild(renderer.domElement);
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x9fd4e8);
-scene.fog=new THREE.Fog(0x9fd4e8,55,165);
+scene.background=new THREE.Color(0xbfe6dd);   // cozy warm daylight sky
+scene.fog=new THREE.Fog(0xcbe9e0,60,172);
 const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,600);
 
-const hemi=new THREE.HemisphereLight(0xbfe3ff,0x4d6a4a,0.95); scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xfff3da,2.1);
+const hemi=new THREE.HemisphereLight(0xfff2dd,0x6f7c4e,1.0); scene.add(hemi);   // warm sky + soft grass bounce
+const sun=new THREE.DirectionalLight(0xffefcc,2.0);
 sun.position.set(40,70,30); sun.castShadow=true;
 sun.shadow.mapSize.set(1024,1024); sun.shadow.camera.near=1; sun.shadow.camera.far=220;   // 2048→1024: 4x cheaper shadow pass, still crisp for this art
 const sc=90; sun.shadow.camera.left=-sc; sun.shadow.camera.right=sc; sun.shadow.camera.top=sc; sun.shadow.camera.bottom=-sc;
@@ -452,7 +458,7 @@ const obstacles=[]; const addObstacle=(x,z,r)=>obstacles.push({x,z,r});
 // ---------- ground ----------
 (function(){
   const c=document.createElement('canvas'); c.width=c.height=256; const x=c.getContext('2d');
-  x.fillStyle='#6aa84f'; x.fillRect(0,0,256,256);
+  x.fillStyle='#77b257'; x.fillRect(0,0,256,256);
   for(let i=0;i<2600;i++){ const g=60+Math.random()*70;
     x.fillStyle=`rgba(${40+Math.random()*40},${g+30},${40+Math.random()*40},${0.25+Math.random()*0.4})`;
     x.fillRect(Math.random()*256,Math.random()*256,2,2+Math.random()*3); }
@@ -484,7 +490,7 @@ function makeRock(x,z){ const s=rand(0.7,2.2);
   rock.castShadow=rock.receiveShadow=true; scene.add(rock); addObstacle(x,z,s*0.8);
 }
 const crystals=[];
-function makeCrystal(x,z){ const h=rand(2.5,5); const col=new THREE.Color().setHSL(rand(0.5,0.75),0.8,0.6);
+function makeCrystal(x,z){ const h=rand(2.5,5); const col=new THREE.Color().setHSL(rand(0.06,0.15),0.85,0.62);   // warm amber/gold fairy crystals
   const m=new THREE.Mesh(new THREE.OctahedronGeometry(h*0.4,0),
     new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.45,metalness:0.3,roughness:0.2,flatShading:true}));
   m.position.set(x,h*0.4,z); m.scale.y=1.7; m.castShadow=true; scene.add(m);
@@ -504,6 +510,16 @@ makeHouse(-12,-9,0.3); makeHouse(12,-12,-0.5); makeHouse(0,16,Math.PI);
 for(let i=0;i<120;i++){ const a=Math.random()*TAU,d=rand(22,WORLD-8); const x=Math.cos(a)*d,z=Math.sin(a)*d;
   const t=Math.random(); if(t<0.55)makeTree(x,z); else if(t<0.82)makeRock(x,z); else makeCrystal(x,z); }
 for(let i=0;i<70;i++){ const a=i/70*TAU; makeTree(Math.cos(a)*(WORLD-3),Math.sin(a)*(WORLD-3)); }
+// cozy fantasy touch: scatter little mushrooms (decorative, no collision)
+function makeMushroom(x,z){ const g=new THREE.Group(); const s=rand(0.5,1.0);
+  const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.12*s,0.16*s,0.5*s,6), new THREE.MeshStandardMaterial({color:0xf3ead2,roughness:1}));
+  stem.position.y=0.25*s;
+  const cap=new THREE.Mesh(new THREE.SphereGeometry(0.32*s,9,6,0,TAU,0,Math.PI/2),
+    new THREE.MeshStandardMaterial({color:(Math.random()<0.5?0xd9533b:0xe0913a),roughness:0.85,flatShading:true}));
+  cap.position.y=0.5*s; cap.scale.y=0.72; cap.castShadow=true;
+  g.add(stem,cap); g.position.set(x,0,z); g.rotation.y=Math.random()*TAU; scene.add(g);
+}
+for(let i=0;i<36;i++){ const a=Math.random()*TAU,d=rand(14,WORLD-12); makeMushroom(Math.cos(a)*d,Math.sin(a)*d); }
 
 // =================================================================
 //  AUDIO — tiny procedural WebAudio synth (lots of juice, no files)
@@ -554,6 +570,10 @@ const sfx=(function(){
 //  WORLD-SPACE FX: floating text, particle bursts, rings, bolts
 // =================================================================
 const damageTexts=[];
+// --- perf: free GPU memory for PER-INSTANCE materials/textures when an object leaves the scene.
+//     NEVER pass a shared/module-level geometry or material (slimeGeo, projMat, …) — those live the whole run.
+function freeMat(m){ if(!m)return; if(m.map)m.map.dispose(); m.dispose(); }
+function freeObj(o){ if(o)o.traverse(n=>{ if(n.isMesh) freeMat(n.material); }); }   // frees materials only; geometries here are shared consts
 function floatText(pos,text,color='#fff',big=false){
   if(damageTexts.length>24)return;   // cap concurrent damage numbers (each is a canvas-texture upload — perf)
   const cv=document.createElement('canvas'); cv.width=128; cv.height=64; const cx=cv.getContext('2d');
@@ -644,9 +664,9 @@ const ETYPES={
 function spawnSlime(x,z,typeKey,boss=false){
   const t=boss?null:(ETYPES[typeKey]||ETYPES.grunt); const ki=boss?-1:ETYPE_KEYS.indexOf(boss?'grunt':(ETYPES[typeKey]?typeKey:'grunt'));
   const hue=boss?0.0:t.hue, lum=boss?0.4:t.lum;
-  const col=new THREE.Color().setHSL(hue,0.7,lum);
+  const col=new THREE.Color().setHSL(hue,0.55,Math.min(0.74,lum+0.06));
   const g=new THREE.Group();
-  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
+  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.12,roughness:0.45,flatShading:true,transparent:true,opacity:0.97}));
   body.castShadow=false; body.position.y=0.7; g.add(body);   // enemies don't cast shadows (perf: many of them)
   const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
   for(const sx of [-0.22,0.22]){ const e=new THREE.Mesh(eyeGeo,eyeMat); e.position.set(sx,0.85,0.55); g.add(e); }
@@ -664,9 +684,9 @@ function spawnSlime(x,z,typeKey,boss=false){
 //  XP SHARDS + pickups
 // =================================================================
 const shards=[]; const shardGeo=new THREE.OctahedronGeometry(0.28,0);
-function dropShard(pos,value,color=0x5bd0ff){
+function dropShard(pos,value,color=0xffd86b){
   if(shards.length>160){ // auto-absorb oldest to cap count (perf)
-    const old=shards.shift(); scene.remove(old.m); player.xp+=old.value*player.growth; }
+    const old=shards.shift(); scene.remove(old.m); freeMat(old.m.material); player.xp+=old.value*player.growth; }
   const m=new THREE.Mesh(shardGeo,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.7,metalness:0.3,roughness:0.2}));
   m.position.set(pos.x,0.6,pos.z); m.castShadow=false; scene.add(m);
   shards.push({m,value,t:Math.random()*6});
@@ -679,7 +699,7 @@ function dropHeart(pos){ const m=new THREE.Mesh(heartGeo,new THREE.MeshStandardM
 //  PROJECTILES
 // =================================================================
 const projectiles=[]; const projGeo=new THREE.SphereGeometry(0.22,8,8);
-const projMat=new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.4,roughness:0.2});
+const projMat=new THREE.MeshStandardMaterial({color:0xffe9a8,emissive:0xffb23a,emissiveIntensity:1.4,roughness:0.2});
 function spawnProjectile(origin,dir,dmg,pierce){
   if(projectiles.length>140){ const old=projectiles.shift(); scene.remove(old.m); }   // cap projectiles (collision is O(proj×enemies))
   const m=new THREE.Mesh(projGeo,projMat); m.position.set(origin.x,1.0,origin.z); m.scale.setScalar(1.1); scene.add(m);
@@ -687,7 +707,7 @@ function spawnProjectile(origin,dir,dmg,pierce){
 }
 // shared meshes used to draw the CO-OP PARTNER's attacks (visual only — no collision/damage)
 const remoteOrbGeo=new THREE.SphereGeometry(0.34,12,12);
-const remoteOrbMat=new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.1,roughness:0.2});
+const remoteOrbMat=new THREE.MeshStandardMaterial({color:0xffe9a8,emissive:0xffb23a,emissiveIntensity:1.1,roughness:0.2});
 const remoteFlameGeo=new THREE.RingGeometry(0.6,1,40);
 const remoteFlameMat=new THREE.MeshBasicMaterial({color:0xff6a1c,transparent:true,opacity:0.3,side:THREE.DoubleSide,depthWrite:false});
 
@@ -701,7 +721,7 @@ function nearestEnemies(n,maxDist){
   arr.sort((a,b)=>a[0]-b[0]); return arr.slice(0,n).map(x=>x[1]);
 }
 function novaBlast(radius,dmg){
-  const p=player.group.position; shockRing(p,radius,0x9af0ff); sfx.boom(); game.shake=Math.max(game.shake,0.55);
+  const p=player.group.position; shockRing(p,radius,0xffd86b); sfx.boom(); game.shake=Math.max(game.shake,0.55);
   for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-p.x,dz=e.group.position.z-p.z; const d=Math.hypot(dx,dz);
     if(d<radius+e.scale*0.7){ hurtEnemy(e,dmg,dx,dz,d,1.4); } }
   pvpHurt(p.x,p.z,radius+0.7,dmg);
@@ -820,7 +840,7 @@ function killEnemy(e){            // host & solo only (guest never owns enemy li
   deathFx(x,z,e.boss,col);
   if(!mp || MP.role==='host'){ dropDeathShards(x,z,e.boss,e.xp); }   // I get my own XP shards
   if(mp && MP.role==='host'){ mpEmitDeath(e); }                       // tell the guest (they drop their own)
-  scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1);
+  scene.remove(e.group); freeObj(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1);
   game.kills++; sfx.kill(); if(!mp) ui.killval.textContent=game.kills;
   if(player.lifesteal&&player.alive&&!player.down){ player.hp=Math.min(player.maxhp,player.hp+player.lifesteal); refreshHUD(); }   // 🩸 lifesteal
   if(mp){ try{ MP._D.runTransaction(MP._killsRef,(v)=>(v||0)+1); }catch(err){} }
@@ -1082,13 +1102,13 @@ function startGame(){ startcard.classList.add('hidden'); startcard.style.display
   sfx.musicStart(); renderLoadout(); refreshHUD(); updateShopBtn(); toast(MP.joined?'対戦開始！ ⚔':'サバイブ！ ⚔','gold'); }
 
 function resetGame(){
-  enemies.forEach(e=>scene.remove(e.group)); enemies.length=0;
-  shards.forEach(s=>scene.remove(s.m)); shards.length=0;
-  hearts.forEach(h=>scene.remove(h.m)); hearts.length=0;
-  projectiles.forEach(p=>scene.remove(p.m)); projectiles.length=0;
-  player.orbMeshes.forEach(o=>scene.remove(o)); player.orbMeshes.length=0; player.orbLevelCache=0;
-  if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; } player.flameCache=0;
-  meteors.forEach(m=>{ scene.remove(m.m); scene.remove(m.tel); }); meteors.length=0;
+  enemies.forEach(e=>{ scene.remove(e.group); freeObj(e.group); }); enemies.length=0;
+  shards.forEach(s=>{ scene.remove(s.m); freeMat(s.m.material); }); shards.length=0;
+  hearts.forEach(h=>{ scene.remove(h.m); freeMat(h.m.material); }); hearts.length=0;
+  projectiles.forEach(p=>scene.remove(p.m)); projectiles.length=0;   // proj geo+mat are shared consts — nothing to dispose
+  player.orbMeshes.forEach(o=>{ scene.remove(o); o.geometry.dispose(); freeMat(o.material); }); player.orbMeshes.length=0; player.orbLevelCache=0;
+  if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh.geometry.dispose(); freeMat(player.flameMesh.material); player.flameMesh=null; } player.flameCache=0;
+  meteors.forEach(m=>{ scene.remove(m.m); scene.remove(m.tel); m.tel.geometry.dispose(); freeMat(m.tel.material); }); meteors.length=0;
   Object.assign(player,{ hp:100,maxhp:100,level:1,xp:0,xpNext:5,
     moveSpeed:8.5,might:1.2,haste:1,area:1,magnet:5.5,growth:1,armor:0,regen:0,crit:0,amount:0,lifesteal:0,evo:{},
     hurtCd:0,dashCd:0,dashT:0,weapons:{bolt:1},passives:{},alive:true,down:false,downT:0,reviveP:0,inHouse:false,credits:0,lives:3,deaths:0,invuln:0 });
@@ -1207,14 +1227,14 @@ function update(dt){
       for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-player.group.position.x,dz=e.group.position.z-player.group.position.z;
         const d=Math.hypot(dx,dz); if(d<R+e.scale*0.5){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
       pvpHurt(player.group.position.x,player.group.position.z,R+0.5,dps*dt);
-    } else if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; }
+    } else if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh.geometry.dispose(); freeMat(player.flameMesh.material); player.flameMesh=null; }
 
     // ---- weapon: orbit guard (continuous) ----
     if(player.weapons.orb){ const l=player.weapons.orb; const oev=!!(player.evo&&player.evo.orb);
       const want=oev?Math.min(10,WDEF.orb.count(l)+3):WDEF.orb.count(l);
-      if(player.orbLevelCache!==want){ player.orbMeshes.forEach(o=>scene.remove(o)); player.orbMeshes=[];
+      if(player.orbLevelCache!==want){ player.orbMeshes.forEach(o=>{ scene.remove(o); o.geometry.dispose(); freeMat(o.material); }); player.orbMeshes=[];
         for(let i=0;i<want;i++){ const o=new THREE.Mesh(new THREE.SphereGeometry(0.34,12,12),
-          new THREE.MeshStandardMaterial({color:oev?0xffcf3a:0x9af0ff,emissive:oev?0xff8a1c:0x46e0c8,emissiveIntensity:1.2,roughness:0.2}));
+          new THREE.MeshStandardMaterial({color:oev?0xffcf3a:0xb6f08a,emissive:oev?0xff8a1c:0x6abf3a,emissiveIntensity:1.1,roughness:0.2}));
           o.castShadow=false; scene.add(o); player.orbMeshes.push(o); } player.orbLevelCache=want; }
       const dps=WDEF.orb.dps(l)*(oev?1.7:1); const R=ORB_R*player.area; game._orbA=(game._orbA||0)+dt*2.6;
       player.orbMeshes.forEach((o,i)=>{ const a=game._orbA+i/want*TAU;
@@ -1234,7 +1254,7 @@ function update(dt){
     for(const e of enemies){ if(e.dead||pr.hit.has(e))continue;
       const dx=e.group.position.x-pr.m.position.x,dz=e.group.position.z-pr.m.position.z; const d=Math.hypot(dx,dz);
       if(d<0.5+e.scale*0.65){ pr.hit.add(e); hurtEnemy(e,pr.dmg,pr.vel.x,pr.vel.z,Math.hypot(pr.vel.x,pr.vel.z),0.6);
-        burst(pr.m.position.clone(),0x9af0ff,5,0.6); pr.pierce--; if(pr.pierce<0)break; } }
+        burst(pr.m.position.clone(),0xffd86b,5,0.6); pr.pierce--; if(pr.pierce<0)break; } }
     // battle: this projectile can also hit the opponent (once)
     if(mpBattle() && !pr.hit.has('P') && MP.remote && MP.remote.present && !mpRemoteInHouse()){
       const rx=MP.remote.group.position.x-pr.m.position.x, rz=MP.remote.group.position.z-pr.m.position.z;
@@ -1272,7 +1292,7 @@ function update(dt){
     }
     e.hop+=dt*7; const hop=Math.abs(Math.sin(e.hop));
     e.group.position.y=hop*0.32*e.scale; e.body.scale.y=1-hop*0.16; e.body.scale.x=e.body.scale.z=1+hop*0.09;
-    e.body.material.emissiveIntensity=e.hurtFlash>0?1.3:0.25;
+    e.body.material.emissiveIntensity=e.hurtFlash>0?1.2:0.1;   // soft glow (cozy), bright flash on hit
   } }
 
   // ---- shards (XP) magnet + collect ----
@@ -1281,31 +1301,31 @@ function update(dt){
     s.m.rotation.y+=dt*3; s.m.position.y=0.55+Math.sin(s.t*4)*0.12;
     const dx=player.group.position.x-s.m.position.x,dz=player.group.position.z-s.m.position.z; const d=Math.hypot(dx,dz);
     if(d<mr){ const pull=Math.min(1,(mr-d)/mr+0.2)*18; s.m.position.x+=dx/d*pull*dt; s.m.position.z+=dz/d*pull*dt; }
-    if(d<1.0){ addXP(s.value); sfx.pickup(); burst(s.m.position.clone(),0x5bd0ff,4,0.5); scene.remove(s.m); shards.splice(i,1); }
+    if(d<1.0){ addXP(s.value); sfx.pickup(); burst(s.m.position.clone(),0x5bd0ff,4,0.5); scene.remove(s.m); freeMat(s.m.material); shards.splice(i,1); }
   }
   for(let i=hearts.length-1;i>=0;i--){ const h=hearts[i]; h.t+=dt; h.m.rotation.y+=dt*2; h.m.position.y=0.55+Math.sin(h.t*3)*0.12;
     const dx=player.group.position.x-h.m.position.x,dz=player.group.position.z-h.m.position.z; const d=Math.hypot(dx,dz);
     if(d<mr){ h.m.position.x+=dx/d*8*dt; h.m.position.z+=dz/d*8*dt; }
-    if(d<1.0){ player.hp=Math.min(player.maxhp,player.hp+30); floatText(h.m.position.clone(),'+30 HP','#ff7a85'); sfx.pickup(); scene.remove(h.m); hearts.splice(i,1); refreshHUD(); }
+    if(d<1.0){ player.hp=Math.min(player.maxhp,player.hp+30); floatText(h.m.position.clone(),'+30 HP','#ff7a85'); sfx.pickup(); scene.remove(h.m); freeMat(h.m.material); hearts.splice(i,1); refreshHUD(); }
   }
 
   // ---- FX updates ----
   for(let i=damageTexts.length-1;i>=0;i--){ const d=damageTexts[i]; d.life+=dt; d.sp.position.y+=d.vy*dt;
-    d.sp.material.opacity=1-d.life/d.ttl; if(d.life>=d.ttl){ scene.remove(d.sp); damageTexts.splice(i,1); } }
+    d.sp.material.opacity=1-d.life/d.ttl; if(d.life>=d.ttl){ scene.remove(d.sp); freeMat(d.sp.material); damageTexts.splice(i,1); } }
   for(let i=bursts.length-1;i>=0;i--){ const b=bursts[i]; b.life+=dt;
     for(const p of b.parts){ p.v.y-=14*dt; p.m.position.addScaledVector(p.v,dt); p.m.scale.setScalar(Math.max(0,1-b.life/b.ttl)); }
-    if(b.life>=b.ttl){ scene.remove(b.group); bursts.splice(i,1); } }
+    if(b.life>=b.ttl){ scene.remove(b.group); if(b.parts[0])freeMat(b.parts[0].m.material); bursts.splice(i,1); } }
   for(let i=rings.length-1;i>=0;i--){ const r=rings[i]; r.life+=dt; const k=r.life/r.ttl;
-    r.m.scale.setScalar(0.5+k*r.maxR); r.m.material.opacity=0.85*(1-k); if(k>=1){ scene.remove(r.m); rings.splice(i,1); } }
+    r.m.scale.setScalar(0.5+k*r.maxR); r.m.material.opacity=0.85*(1-k); if(k>=1){ scene.remove(r.m); freeMat(r.m.material); rings.splice(i,1); } }
   for(let i=bolts.length-1;i>=0;i--){ const b=bolts[i]; b.life+=dt; const k=b.life/b.ttl;
-    b.m.material.opacity=0.95*(1-k); b.l.intensity=8*(1-k); if(k>=1){ scene.remove(b.m); scene.remove(b.l); bolts.splice(i,1); } }
+    b.m.material.opacity=0.95*(1-k); b.l.intensity=8*(1-k); if(k>=1){ scene.remove(b.m); freeMat(b.m.material); scene.remove(b.l); bolts.splice(i,1); } }
   // ☄️ meteors fall then explode
   for(let i=meteors.length-1;i>=0;i--){ const me=meteors[i]; me.t+=dt; const k=Math.min(1,me.t/0.7);
     me.m.position.y=15*(1-k)+0.5; me.m.rotation.x+=dt*6; me.m.rotation.y+=dt*5; me.tel.material.opacity=0.5*Math.sin(k*Math.PI)+0.12;
     if(k>=1){ shockRing(new THREE.Vector3(me.tx,0,me.tz),me.rad,0xff7a3c); burst(new THREE.Vector3(me.tx,0.6,me.tz),0xff7a3c,18,1.3); game.shake=Math.max(game.shake,0.4); sfx.boom();
       for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-me.tx,dz=e.group.position.z-me.tz; const d=Math.hypot(dx,dz); if(d<me.rad+e.scale*0.6){ hurtEnemy(e,me.dmg,dx,dz,d,1.2); } }
       pvpHurt(me.tx,me.tz,me.rad+0.6,me.dmg);
-      scene.remove(me.m); scene.remove(me.tel); meteors.splice(i,1); } }
+      scene.remove(me.m); scene.remove(me.tel); me.tel.geometry.dispose(); freeMat(me.tel.material); meteors.splice(i,1); } }
   for(const c of crystals)c.rotation.y+=dt*0.6;
 
   if(player.mixer&&game.state!=='levelup')player.mixer.update(dt);
@@ -1630,7 +1650,7 @@ function mpTick(dt){
   else {
     if(now-(MP._lastDmgFlush||0)>120){ MP._lastDmgFlush=now; mpFlushDmg(); }
     // grace removal: drop net enemies not refreshed for 0.8s (prevents flicker when they leave the broadcast set)
-    for(const id in MP.netMap){ const e=MP.netMap[id]; if(now-(e._seen||0)>800){ e.dead=true; scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[id]; } }
+    for(const id in MP.netMap){ const e=MP.netMap[id]; if(now-(e._seen||0)>800){ e.dead=true; scene.remove(e.group); freeObj(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[id]; } }
     // vanished host: no fresh enemy snapshot for 3s → the host's device slept/left. Re-matchmake (usually become host) so play continues.
     if(MP._enemSnapT && Date.now()-MP._enemSnapT>3000 && !MP._rematching && game.state==='playing'){ mpResetAndRematch(); }
   }
@@ -1729,9 +1749,9 @@ function mpBroadcastEnemies(){
 function mpMakeNetEnemy(id,d){
   const boss=!!d.b; const t=boss?null:(ETYPES[ETYPE_KEYS[d.k]]||ETYPES.grunt);
   const scale=boss?3.4:t.scale;
-  const hue=boss?0:t.hue, lum=boss?0.4:t.lum; const col=new THREE.Color().setHSL(hue,0.7,lum);
+  const hue=boss?0:t.hue, lum=boss?0.4:t.lum; const col=new THREE.Color().setHSL(hue,0.55,Math.min(0.74,lum+0.06));
   const g=new THREE.Group();
-  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
+  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.12,roughness:0.45,flatShading:true,transparent:true,opacity:0.97}));
   body.castShadow=false; body.position.y=0.7; g.add(body);   // enemies don't cast shadows (perf: many of them)
   const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
   for(const sx of [-0.22,0.22]){ const ey=new THREE.Mesh(eyeGeo,eyeMat); ey.position.set(sx,0.85,0.55); g.add(ey); }
@@ -1758,12 +1778,15 @@ function mpOnDeathEvent(snap){
   const d=snap.val();
   if(d){ deathFx(d.x,d.z,!!d.b); dropDeathShards(d.x,d.z,!!d.b,d.xp);
     if(player.lifesteal&&player.alive&&!player.down){ player.hp=Math.min(player.maxhp,player.hp+player.lifesteal); refreshHUD(); }   // 🩸 guest lifesteal
-    if(d.id&&MP.netMap[d.id]){ const e=MP.netMap[d.id]; e.dead=true; scene.remove(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[d.id]; } }
+    if(d.id&&MP.netMap[d.id]){ const e=MP.netMap[d.id]; e.dead=true; scene.remove(e.group); freeObj(e.group); const i=enemies.indexOf(e); if(i>=0)enemies.splice(i,1); delete MP.netMap[d.id]; } }
   try{ MP._D.remove(snap.ref); }catch(e){}
 }
-function mpClearAllEnemies(){ for(const e of enemies) scene.remove(e.group); enemies.length=0; MP.netMap={}; }
+function mpClearAllEnemies(){ for(const e of enemies){ scene.remove(e.group); freeObj(e.group); } enemies.length=0; MP.netMap={}; }
 
-function animate(){ requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),0.05); update(dt); renderer.render(scene,camera); }
+let _frame=0;
+function animate(){ requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),0.05); update(dt);
+  renderer.shadowMap.needsUpdate=(_frame++%3===0);   // perf: refresh shadows ~20fps instead of 60 (invisible for this art, ~3x cheaper shadow pass)
+  renderer.render(scene,camera); }
 animate();
 function fitViewport(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.setPixelRatio(Math.min(devicePixelRatio, LOWP?1.5:2)); renderer.setSize(innerWidth,innerHeight); }
