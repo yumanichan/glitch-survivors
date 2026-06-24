@@ -1,0 +1,35 @@
+{
+  "rules": {
+    "lobby": {
+      ".read": true,
+      ".write": true
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": true,
+        "players": {
+          "$slot": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['x','z'])",
+            "x":     { ".validate": "newData.isNumber()" },
+            "z":     { ".validate": "newData.isNumber()" },
+            "ry":    { ".validate": "newData.isNumber()" },
+            "anim":  { ".validate": "newData.isString()" },
+            "hp":    { ".validate": "newData.isNumber()" },
+            "mhp":   { ".validate": "newData.isNumber()" },
+            "lv":    { ".validate": "newData.isNumber()" },
+            "alive": { ".validate": "newData.isBoolean()" },
+            "down":  { ".validate": "newData.isBoolean()" },
+            "rp":    { ".validate": "newData.isNumber()" },
+            "t":     { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "enemies": { ".write": true },
+        "dmg":     { ".write": true },
+        "deaths":  { ".write": true },
+        "state":   { ".write": true }
+      }
+    }
+  }
+}
