@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 44</div>
+      <ul>
+        <li>⚔️ バトルのアーマー：被ダメ軽減を60%→<b>30%カット</b>に変更（打ち合いがやや早くなる）</li>
+      </ul>
       <div class="clog-day">6/25 — Build 43（対戦調整）</div>
       <ul>
         <li>⚔️ バトル：マジックボルトはカード廃止＋レベルで自動強化</li>
@@ -462,7 +466,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='43';
+const BUILD='44';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1773,7 +1777,7 @@ function pvpFlush(){ if(!mpBattle()||!(MP.pvpAccum>0)) return; const d=Math.roun
 function mpOnPvpHit(snap){ const v=snap.val(); try{ MP._D.remove(snap.ref); }catch(e){}
   if(v&&v.d&&mpBattle()&&player.alive&&player.invuln<=0&&!player.inHouse) takePvpDamage(v.d); }
 function takePvpDamage(d){
-  const dmg=Math.max(1, d*0.4 - player.armor); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);   // PvP armor: take only ~40% (60% reduced)
+  const dmg=Math.max(1, d*0.7 - player.armor); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);   // PvP armor: 30% cut (take 70%)
   document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
   floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78'); game.shake=Math.max(game.shake,0.25); refreshHUD();
   if(player.hp<=0){ player.hp=0; battleDeath(); }
