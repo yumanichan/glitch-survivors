@@ -318,10 +318,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
-      <div class="clog-day">6/24 — Build 32</div>
+      <div class="clog-day">6/24 — Build 33</div>
       <ul>
-        <li>🛒 スマホ縦画面でショップのカードが潰れて重なる不具合を修正（触らなくても正常表示）</li>
-        <li>カード一覧を内部スクロール化（vh依存をやめ、カードに最小高さを設定）</li>
+        <li>🛒 スマホ（iOS）でショップが潰れて重なる不具合を修正：開いた瞬間にレイアウトを強制再計算（触らなくても直る）</li>
+        <li>カード一覧を内部スクロール化＋カード最小高さ＋表示時に高さ確定</li>
       </ul>
       <div class="clog-day">6/24 — Build 31</div>
       <ul>
@@ -413,7 +413,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='32';
+const BUILD='33';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -893,14 +893,18 @@ function openShop(){
   if(!mp) game.state='levelup';
   sfx.level();
   document.querySelector('#levelup h2').textContent='🛒 ショップ';
-  document.getElementById('levelup').classList.add('show','house','shop');
+  const lu=document.getElementById('levelup'); lu.style.height=window.innerHeight+'px';   // bind the flex column to the real viewport (iOS)
+  lu.classList.add('show','house','shop');
   renderShop(); updateShopBtn();
+  // iOS Safari can render the just-shown grid squished until a reflow — force one so it's correct without touching
+  const cards=document.getElementById('cards');
+  requestAnimationFrame(()=>{ lu.style.height=window.innerHeight+'px'; cards.style.display='none'; void cards.offsetHeight; cards.style.display=''; cards.scrollTop=0; });
 }
 function closeShop(){
   if(!game.shopping) return;
   const mp=MP.enabled&&MP.joined;
   game.shopping=false;
-  document.getElementById('levelup').classList.remove('show','house','shop','mp');
+  const lu=document.getElementById('levelup'); lu.classList.remove('show','house','shop','mp'); lu.style.height='';
   exitHouse(); if(!mp && game.state==='levelup') game.state='playing';
   updateShopBtn();
 }
@@ -1091,7 +1095,7 @@ function resetGame(){
   if(MP.enabled&&MP.joined) mpSendHouse(false);   // make sure I'm not stuck "in the house" after a reset
   if(player.model) player.model.visible=true;
   player.group.position.set(0,0,0); document.getElementById('downed').style.display='none';
-  const _lu=document.getElementById('levelup'); _lu.classList.remove('show','mp','house','shop');   // clear any open shop
+  const _lu=document.getElementById('levelup'); _lu.classList.remove('show','mp','house','shop'); _lu.style.height='';   // clear any open shop
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,milestone:0,picking:false,shopping:false });
   if(mpBattle()){ MP.remoteLives=3; mpSendLives(); updateBattleHud(); }   // fresh lives for a rematch
   updateShopBtn();
@@ -1101,7 +1105,7 @@ function resetGame(){
 }
 
 function die(){ player.alive=false; player.down=false; game.state='dead'; game.shopping=false;
-  document.getElementById('levelup').classList.remove('show','mp','house','shop');   // close the shop on death
+  { const _l=document.getElementById('levelup'); _l.classList.remove('show','mp','house','shop'); _l.style.height=''; }   // close the shop on death
   player.inHouse=false; mpSendHouse(false); updateShopBtn();   // never die while "in the house"
   document.querySelector('#deathcard .tag').textContent='システムダウン';   // restore the normal death text (battle mode overwrites it)
   document.querySelector('#deathcard h1').textContent='やられた…';
@@ -1698,7 +1702,7 @@ function battleDeath(){
 function battleEnd(won){
   if(game.state==='dead') return;
   game.state='dead'; game.shopping=false; player.alive=!!won;
-  document.getElementById('levelup').classList.remove('show','mp','house','shop'); updateShopBtn();
+  { const _l=document.getElementById('levelup'); _l.classList.remove('show','mp','house','shop'); _l.style.height=''; } updateShopBtn();
   if(!won) fade('Death',0.2); sfx.musicStop();
   document.querySelector('#deathcard .tag').textContent = won?'勝利':'敗北';
   document.querySelector('#deathcard h1').textContent = won?'🏆 YOU WIN!':'💀 YOU LOSE';
