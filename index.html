@@ -167,6 +167,20 @@
   #muteBtn { position:fixed; top:20px; right:14px; z-index:16; width:38px; height:38px; border-radius:10px;
              background:rgba(8,14,22,.7); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:17px;
              cursor:pointer; pointer-events:auto; -webkit-tap-highlight-color:transparent; }
+  /* changelog panel */
+  #changelog { position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;
+               background:rgba(6,12,18,.86); backdrop-filter:blur(4px); padding:20px; box-sizing:border-box; }
+  #changelog.show { display:flex; }
+  .clog-card { background:linear-gradient(160deg,rgba(20,32,44,.98),rgba(10,16,24,.98)); border:1.5px solid rgba(70,224,200,.35);
+               border-radius:16px; max-width:520px; width:100%; max-height:84vh; display:flex; flex-direction:column; padding:22px 20px; box-sizing:border-box; }
+  .clog-card h2 { font-size:22px; font-weight:800; margin-bottom:14px; color:var(--accent); text-align:center; }
+  .clog-body { overflow-y:auto; text-align:left; padding-right:6px; -webkit-overflow-scrolling:touch; }
+  .clog-day { font-size:13px; font-weight:800; letter-spacing:1px; color:var(--gold); margin:14px 0 4px; }
+  .clog-day:first-child { margin-top:0; }
+  .clog-body ul { margin:0 0 6px; padding-left:18px; }
+  .clog-body li { font-size:13px; line-height:1.6; opacity:.9; margin-bottom:3px; }
+  .clog-body b { color:var(--accent); }
+  #clogClose { margin-top:16px; align-self:center; }
 </style>
 </head>
 <body>
@@ -229,6 +243,7 @@
       <button class="btn" id="coopBtn">👥&nbsp; 2人で遊ぶ</button>
       <button class="btn" id="soloBtn" style="background:linear-gradient(90deg,#8fa3ad,#b9ccd4); box-shadow:0 8px 30px rgba(140,160,170,.3)">🤖&nbsp; 1人で遊ぶ</button>
       <div style="font-size:12px;opacity:.65;margin-top:6px">移動: WASD / 画面下のスティック ・ 武器は自動発射</div>
+      <button id="clogBtn" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;opacity:.85;margin-top:2px;text-decoration:underline;pointer-events:auto">📜 変更ログを見る</button>
     </div>
 
     <div id="lobbyView" style="display:none; margin-top:8px;">
@@ -245,6 +260,48 @@
     <p>Unit&nbsp;7 は機能停止した。群れは止まらない…</p>
     <div class="deathstat">生存 <b id="d_time">00:00</b> · レベル <b id="d_lvl">1</b> · 撃破 <b id="d_kills">0</b></div>
     <button class="btn" id="respawnbtn">↻&nbsp; リブートして再挑戦</button>
+  </div>
+</div>
+
+<!-- changelog / update history -->
+<div id="changelog">
+  <div class="clog-card">
+    <h2>📜 変更ログ</h2>
+    <div class="clog-body">
+      <div class="clog-day">6/24 — Build 22</div>
+      <ul>
+        <li>経験値を敵の強さで変化（群れ1 → 重装甲12 → ボス55）</li>
+        <li>敵タイプごとにスピードのメリハリを強化</li>
+        <li>自分の攻撃力を全体 +20%</li>
+        <li>マルチのレベルアップは<b>一時停止せず</b>画面上部にカード表示（逃げながら選択 / PCは J・K・L）</li>
+      </ul>
+      <div class="clog-day">6/24 — Build 21</div>
+      <ul><li>仲間の攻撃（弾・周回オーブ・炎）が見えるように同期</li></ul>
+      <div class="clog-day">6/24 — Build 18〜20 ＋ オンライン修正</div>
+      <ul>
+        <li><b>オンライン接続の根本修正</b>（接続できない問題を解決：プレイヤー情報の書き込みをサーバー側で許可）</li>
+        <li>マッチメイキングの幽霊部屋対策（生きていないホストの部屋に入らない）</li>
+        <li>敵同期の安定化（両プレイヤー周辺を配信・途切れ防止・ホスト消失からの自動復帰）</li>
+        <li>接続状況バッジを表示</li>
+      </ul>
+      <div class="clog-day">6/24 — Build 14〜17</div>
+      <ul>
+        <li>自動アップデート（端末が自動で最新版に更新）</li>
+        <li>co-op の開始を堅牢化（端末スリープでも開始フラグで確実にスタート）</li>
+        <li>オービット/炎の「0」ダメージ表示を修正</li>
+      </ul>
+      <div class="clog-day">6/23 — 基盤</div>
+      <ul>
+        <li>オンライン マルチプレイ追加（自動マッチメイク・リアルタイム同期）</li>
+        <li>ホスト権威の敵同期（2人で同じ敵を共有）</li>
+        <li>武器進化システム ＋ 武器4種・パッシブ3種を追加</li>
+        <li>co-op 蘇生（ダウン → 仲間が近づいて救助）＋ BGM</li>
+        <li>敵5種類 ＋ 全方位からの群れ ＋ フローティングジョイスティック</li>
+        <li>メインメニュー（1人 / 2人）＋ レベルアップカードを横並び</li>
+        <li>Glitch Survivors 初版（3D・iPad タッチ操作対応）</li>
+      </ul>
+    </div>
+    <button class="btn" id="clogClose">閉じる</button>
   </div>
 </div>
 
@@ -271,7 +328,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='22';
+const BUILD='23';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -879,7 +936,16 @@ document.getElementById('coopBtn').onclick=()=>{ sfx.init(); start2P(); };
 document.getElementById('cancelBtn').onclick=()=>{ mpLeave(); showMenu(); };
 document.getElementById('lobbySoloBtn').onclick=()=>{ mpLeave(); MP.enabled=false; startGame(); };   // escape hatch: never stuck waiting
 document.getElementById('muteBtn').onclick=()=>{ sfx.init(); const m=sfx.toggleMute(); document.getElementById('muteBtn').textContent=m?'🔇':'🔊'; };
-document.getElementById('respawnbtn').onclick=()=>{ deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden'); resetGame(); };
+document.getElementById('clogBtn').onclick=()=>document.getElementById('changelog').classList.add('show');
+document.getElementById('clogClose').onclick=()=>document.getElementById('changelog').classList.remove('show');
+document.getElementById('respawnbtn').onclick=()=>{
+  if(MP.enabled && MP.joined){   // co-op: reboot BOTH players together (the shared restart listener fires for both)
+    try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/restart`), Date.now()); }catch(e){}
+    deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden');   // hide locally right away (listener resets the run)
+  } else {
+    deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden'); resetGame();
+  }
+};
 
 function start2P(){ menuButtons.style.display='none'; lobbyView.style.display='block'; game.state='lobby';
   if(lobbyStatus)lobbyStatus.textContent='🟡 マッチング中…';
@@ -1215,6 +1281,13 @@ function mpEnterRoom(){
   MP._D.onDisconnect(D.ref(db,`rooms/${MP.roomId}/state/atk_${MP.mySlot}`)).remove();   // clear my attack node when I leave
   if(MP._unsubAtk){MP._unsubAtk();MP._unsubAtk=null;}
   MP._unsubAtk=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/atk_${MP.otherSlot}`),(s)=>{ if(MP.remoteAtk) MP.remoteAtk.data=s.val(); });
+  // ---- synchronized restart: a shared timestamp; either player bumping it reboots BOTH at once ----
+  MP._restartPrimed=false;
+  if(MP._unsubRestart){MP._unsubRestart();MP._unsubRestart=null;}
+  MP._unsubRestart=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/restart`),(s)=>{ const v=s.val()||0;
+    if(!MP._restartPrimed){ MP._lastRestart=v; MP._restartPrimed=true; return; }   // first callback = baseline (ignore any stale value)
+    if(v>(MP._lastRestart||0)){ MP._lastRestart=v; mpDoCoopRestart(); } });
+  mpEnsureSelfTag();   // show "プレイヤーN" over my own character
   setBadge('🟡 相手を待っています…','#ffcf3a');
   // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
   if(MP.role==='guest'){ try{ D.set(goRef,true); }catch(e){} if(game.state==='lobby') startGame(); }
@@ -1274,18 +1347,19 @@ function mpOnRemote(d){
   // partner went down → alert the rescuer once
   if(d.down && !MP._partnerWasDown){ toast('🆘 相方ダウン！近づいて蘇生','bad'); }
   MP._partnerWasDown=!!d.down;
-  // name/HP tag (shows revive % while the partner is down)
-  const tagTxt = d.down ? `🆘 ダウン ${Math.round((d.rp||0)*100)}%` : `P2 · Lv ${d.lv||1} · ${d.hp}HP`;
-  if(MP.remote._tagTxt!==tagTxt){ MP.remote._tagTxt=tagTxt; mpDrawTag(MP.remote,tagTxt, d.alive&&!d.down); }
+  // name tag — partner's player number (+ revive % while down)
+  const pn = mpPlayerNum(MP.otherSlot);
+  const tagTxt = d.down ? `🆘 プレイヤー${pn} ${Math.round((d.rp||0)*100)}%` : `プレイヤー${pn} · Lv${d.lv||1}`;
+  if(MP.remote._tagTxt!==tagTxt){ MP.remote._tagTxt=tagTxt; mpDrawTag(MP.remote,tagTxt, (d.alive&&!d.down)?'#7af7ff':'#ff9aa3'); }
 }
 
+function mpPlayerNum(slot){ return slot==='p1'?1:2; }
 function mpCreateRemote(){
   let model=null;
   try{ if(player.clips && player.model) model=cloneSkeleton(player.model); }catch(e){ model=null; }
   if(!model) model=buildFallback();
-  model.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false;
-    if(o.material){ o.material=o.material.clone(); if(o.material.color)o.material.color.lerp(new THREE.Color(0x35e0ff),0.5);
-      if('emissive' in o.material) o.material.emissive=new THREE.Color(0x0d3340); } } });
+  // keep the partner's NORMAL colours (just clone materials so they don't share state with the local player)
+  model.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false; if(o.material) o.material=o.material.clone(); } });
   const g=new THREE.Group(); g.add(model); scene.add(g);
   let mixer=null, actions={};
   if(player.clips){ mixer=new THREE.AnimationMixer(model); player.clips.forEach(c=>actions[c.name]=mixer.clipAction(c)); }
@@ -1293,14 +1367,36 @@ function mpCreateRemote(){
   const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(tagCv),depthTest:false,transparent:true}));
   tag.scale.set(4,1,1); tag.position.set(0,3.4,0); tag.renderOrder=998; g.add(tag);
   MP.remote={ group:g, model, mixer, actions, current:null, lastAnim:null, target:new THREE.Vector3(), ry:0, present:true, data:{}, tag, tagCv };
-  mpDrawTag(MP.remote,'P2',true);
+  mpDrawTag(MP.remote,'プレイヤー'+mpPlayerNum(MP.otherSlot),'#7af7ff');
 }
-function mpDrawTag(R,txt,alive){
+function mpDrawTag(R,txt,color){
   const cx=R.tagCv.getContext('2d'); cx.clearRect(0,0,256,64);
   cx.font='bold 30px Segoe UI, sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
   cx.lineWidth=6; cx.strokeStyle='rgba(0,0,0,.85)'; cx.strokeText(txt,128,32);
-  cx.fillStyle=alive?'#7af7ff':'#ff9aa3'; cx.fillText(txt,128,32);
+  cx.fillStyle=color||'#7af7ff'; cx.fillText(txt,128,32);
   R.tag.material.map.needsUpdate=true;
+}
+// a floating "プレイヤーN" tag over the LOCAL player too (co-op only) — gold, to tell yourself apart from the cyan partner
+function mpEnsureSelfTag(){
+  if(!player._tag){
+    const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false,transparent:true}));
+    sp.scale.set(4,1,1); sp.position.set(0,3.4,0); sp.renderOrder=998; player.group.add(sp);
+    player._tag=sp; player._tagCv=cv;
+  }
+  const txt='プレイヤー'+mpPlayerNum(MP.mySlot);
+  const cx=player._tagCv.getContext('2d'); cx.clearRect(0,0,256,64);
+  cx.font='bold 30px Segoe UI, sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  cx.lineWidth=6; cx.strokeStyle='rgba(0,0,0,.85)'; cx.strokeText(txt,128,32);
+  cx.fillStyle='#ffd86b'; cx.fillText(txt,128,32);
+  player._tag.material.map.needsUpdate=true; player._tag.visible=true;
+}
+// synchronized co-op reboot: either player presses 再挑戦 → both reset to a fresh run at the same time
+function mpDoCoopRestart(){
+  deathcard.classList.add('hidden'); deathcard.style.display='none'; overlay.classList.add('hidden');
+  const lu=document.getElementById('levelup'); lu.classList.remove('show','mp');
+  resetGame();
+  if(player._tag) player._tag.visible=true;   // keep the self tag after reset
 }
 function mpDestroyRemote(){ if(MP.remote){ scene.remove(MP.remote.group); MP.remote=null; } mpClearRemoteAtkMeshes(); }
 
