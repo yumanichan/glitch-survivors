@@ -157,8 +157,10 @@
   #shopBtn.has { border-color:var(--gold); color:#ffe08a; box-shadow:0 0 20px rgba(255,207,58,.55); animation:shoppulse 1.2s ease-in-out infinite; }
   #shopBtn #shopCount { display:inline-block; min-width:16px; text-align:center; }
   @keyframes shoppulse { 0%,100%{ transform:translateX(-50%) scale(1);} 50%{ transform:translateX(-50%) scale(1.06);} }
-  #shopClose { display:none; margin-top:12px; flex:0 0 auto; }
-  #levelup.shop #shopClose { display:inline-block; }
+  #shopBtns { display:none; gap:10px; justify-content:center; flex:0 0 auto; margin-top:12px; }
+  #levelup.shop #shopBtns { display:flex; }
+  #shopBtns .btn { margin-top:0; }
+  #shopReset { background:rgba(255,255,255,.14); color:#fff; box-shadow:none; }
   /* stack header → grid → close; the grid fills the middle and scrolls internally (no vh, so mobile renders right on first paint) */
   #levelup.shop { justify-content:flex-start; padding:14px 8px 10px; }
   #levelup.shop h2, #levelup.shop .sub { flex:0 0 auto; }
@@ -278,7 +280,10 @@
   <h2>レベルアップ！</h2>
   <div class="sub">強化を選ぶ</div>
   <div id="cards"></div>
-  <button class="btn" id="shopClose">✓&nbsp; 外に出る</button>
+  <div id="shopBtns">
+    <button class="btn" id="shopReset" style="display:none">🔄&nbsp; 選び直す</button>
+    <button class="btn" id="shopClose">✓&nbsp; 外に出る</button>
+  </div>
 </div>
 
 <div id="overlay">
@@ -320,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 42</div>
+      <ul>
+        <li>🛒 ショップに「🔄 選び直す」ボタン追加：その回の購入を払い戻して選び直せる（クレジットも戻る）</li>
+      </ul>
       <div class="clog-day">6/25 — Build 41</div>
       <ul>
         <li>💎 経験値ジェムの色を価値（敵の強さ）で変化：淡→水色→青→紫→琥珀、ボスは金</li>
@@ -445,7 +454,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='41';
+const BUILD='42';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -931,7 +940,8 @@ function openShop(){
   if(game.shopping||game.state==='dead') return;
   if((player.credits||0)<=0){ toast('クレジットなし — レベルアップで貯まる','bad'); return; }
   const mp=MP.enabled&&MP.joined;
-  game.shopping=true; enterHouse();          // shop = the safe house (MP: safe/invisible, aggro shifts; solo: pause)
+  game.shopping=true; game._shopSnap=shopSnap();   // snapshot so 選び直す can refund this visit's purchases
+  enterHouse();          // shop = the safe house (MP: safe/invisible, aggro shifts; solo: pause)
   if(!mp) game.state='levelup';
   sfx.level();
   document.querySelector('#levelup h2').textContent='🛒 ショップ';
@@ -950,6 +960,14 @@ function closeShop(){
   exitHouse(); if(!mp && game.state==='levelup') game.state='playing';
   updateShopBtn();
 }
+// snapshot/refund so 選び直す can undo all purchases made this shop visit
+function shopSnap(){ const p=player; return { credits:p.credits, weapons:Object.assign({},p.weapons), passives:Object.assign({},p.passives), evo:Object.assign({},p.evo),
+  might:p.might,haste:p.haste,area:p.area,magnet:p.magnet,growth:p.growth,armor:p.armor,regen:p.regen,crit:p.crit,amount:p.amount,lifesteal:p.lifesteal,maxhp:p.maxhp,hp:p.hp }; }
+function shopRestore(){ const s=game._shopSnap; if(!s||!game.shopping) return; const p=player;
+  p.credits=s.credits; p.weapons=Object.assign({},s.weapons); p.passives=Object.assign({},s.passives); p.evo=Object.assign({},s.evo);
+  p.might=s.might;p.haste=s.haste;p.area=s.area;p.magnet=s.magnet;p.growth=s.growth;p.armor=s.armor;p.regen=s.regen;p.crit=s.crit;p.amount=s.amount;p.lifesteal=s.lifesteal;p.maxhp=s.maxhp;p.hp=Math.min(s.hp,s.maxhp);
+  player.orbLevelCache=-1;   // rebuild orb meshes for the restored level
+  renderShop(); renderLoadout(); refreshHUD(); updateShopBtn(); toast('🔄 選び直し（払い戻し）','gold'); }
 function renderShop(){
   const credits=player.credits||0;
   document.querySelector('#levelup .sub').textContent=`所持クレジット 🪙${credits} ・ カード1枚 = 🪙1`;
@@ -969,6 +987,8 @@ function renderShop(){
   };
   for(const id in WDEF) mk('w',id);
   for(const id in PDEF) mk('p',id);
+  const sr=document.getElementById('shopReset');   // show 選び直す only after you've spent at least 1 credit this visit
+  if(sr) sr.style.display = (game._shopSnap && credits < game._shopSnap.credits) ? 'inline-block' : 'none';
 }
 function buyCard(type,id){
   if((player.credits||0)<=0||!game.shopping) return;
@@ -1096,6 +1116,7 @@ document.getElementById('clogBtn').onclick=()=>document.getElementById('changelo
 document.getElementById('clogFab').onclick=()=>document.getElementById('changelog').classList.add('show');   // always-on button (menu + in-game)
 document.getElementById('shopBtn').onclick=()=>openShop();
 document.getElementById('shopClose').onclick=()=>closeShop();
+document.getElementById('shopReset').onclick=()=>shopRestore();
 new Image().src='house-interior.png';   // preload the house interior so the first level-up doesn't flash
 document.getElementById('clogClose').onclick=()=>document.getElementById('changelog').classList.remove('show');
 document.getElementById('respawnbtn').onclick=()=>{
