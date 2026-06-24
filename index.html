@@ -325,6 +325,14 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 43（対戦調整）</div>
+      <ul>
+        <li>⚔️ バトル：マジックボルトはカード廃止＋レベルで自動強化</li>
+        <li>⚔️ 相手の攻撃を約60%軽減（タンク化）／基礎体力3倍(300)</li>
+        <li>⚔️ オービット/フレイムはレベル1の敵を一撃</li>
+        <li>💎 経験値結晶は色に加えて<b>大きさ</b>も価値で変化（全モード）</li>
+        <li>協力・ソロは戦闘調整なし</li>
+      </ul>
       <div class="clog-day">6/25 — Build 42</div>
       <ul>
         <li>🛒 ショップに「🔄 選び直す」ボタン追加：その回の購入を払い戻して選び直せる（クレジットも戻る）</li>
@@ -454,7 +462,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='42';
+const BUILD='43';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -709,13 +717,14 @@ function spawnSlime(x,z,typeKey,boss=false){
 //  XP SHARDS + pickups
 // =================================================================
 const shards=[]; const shardGeo=new THREE.OctahedronGeometry(0.28,0);
-// XP gem colour by value (enemy strength): pale→cyan→blue→purple→amber
+// XP gem colour + size by value (enemy strength): pale/small → amber/big, boss gold/biggest
 function shardColor(v){ return v>=12?0xff8a2c : v>=5?0xc06bff : v>=3?0x4a9eff : v>=2?0x5bd0ff : 0xbfe6ff; }
+function shardScale(v){ return v>=12?2.0 : v>=8?1.7 : v>=5?1.5 : v>=3?1.25 : v>=2?1.0 : 0.8; }
 function dropShard(pos,value,color=shardColor(value)){
   if(shards.length>160){ // auto-absorb oldest to cap count (perf)
     const old=shards.shift(); scene.remove(old.m); player.xp+=old.value*player.growth; }
   const m=new THREE.Mesh(shardGeo,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.7,metalness:0.3,roughness:0.2}));
-  m.position.set(pos.x,0.6,pos.z); m.castShadow=false; scene.add(m);
+  m.scale.setScalar(shardScale(value)); m.position.set(pos.x,0.6,pos.z); m.castShadow=false; scene.add(m);
   shards.push({m,value,t:Math.random()*6});
 }
 const hearts=[]; const heartGeo=new THREE.SphereGeometry(0.32,10,10);
@@ -923,8 +932,9 @@ function updateDowned(dt){
 function addXP(v){ player.xp+=v*player.growth;
   // each filled XP meter = 1 level = +1 shop credit (spend later in the 🛒 shop / house). No forced popup.
   let leveled=false;
-  while(player.xp>=player.xpNext && game.state!=='dead'){ consumeLevel(); player.credits=(player.credits||0)+1; leveled=true; }
-  if(leveled){ sfx.level(); game.shake=Math.max(game.shake,0.22); toast('🛒 強化チケット +1','gold'); }
+  while(player.xp>=player.xpNext && game.state!=='dead'){ consumeLevel(); player.credits=(player.credits||0)+1; leveled=true;
+    if(mpBattle()) player.weapons.bolt=Math.min(WDEF.bolt.max,(player.weapons.bolt||1)+1); }   // battle: bolt auto-levels (no card)
+  if(leveled){ sfx.level(); game.shake=Math.max(game.shake,0.22); toast(mpBattle()?'⬆ レベルアップ！':'🛒 強化チケット +1','gold'); }
   refreshHUD(); updateShopBtn();
 }
 function consumeLevel(){ player.xp-=player.xpNext; player.level++; player.xpNext=Math.round(player.xpNext*1.32+4); }
@@ -985,7 +995,7 @@ function renderShop(){
     if(affordable) c.onclick=()=>buyCard(type,id);
     cont.appendChild(c);
   };
-  for(const id in WDEF) mk('w',id);
+  for(const id in WDEF){ if(mpBattle()&&id==='bolt')continue; mk('w',id); }   // battle: bolt auto-levels, not a card
   for(const id in PDEF) mk('p',id);
   const sr=document.getElementById('shopReset');   // show 選び直す only after you've spent at least 1 credit this visit
   if(sr) sr.style.display = (game._shopSnap && credits < game._shopSnap.credits) ? 'inline-block' : 'none';
@@ -1142,7 +1152,8 @@ function mpLeave(){ const D=MP._D;
 
 // battle: start on opposite sides (p1 left / p2 right) facing each other
 function battleSpawn(){ const side = MP.mySlot==='p1'? -1 : 1; player.group.position.set(side*30,0,0);
-  player.lastDir.set(-side,0,0); player.group.rotation.y=Math.atan2(-side,0); }
+  player.lastDir.set(-side,0,0); player.group.rotation.y=Math.atan2(-side,0);
+  player.maxhp=300; player.hp=300; refreshHUD(); }   // battle: 3x base HP
 function startGame(){ startcard.classList.add('hidden'); startcard.style.display='none'; overlay.classList.add('hidden');
   game.state='playing'; player.down=false; document.getElementById('downed').style.display='none';
   if(mpBattle()) battleSpawn();
@@ -1277,7 +1288,7 @@ function update(dt){
       fm.material.color.setHex(fev?0xffcf3a:0xff6a1c);
       fm.material.opacity=0.25+0.12*Math.abs(Math.sin(game.time*4));
       for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-player.group.position.x,dz=e.group.position.z-player.group.position.z;
-        const d=Math.hypot(dx,dz); if(d<R+e.scale*0.5){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
+        const d=Math.hypot(dx,dz); if(d<R+e.scale*0.5){ hurtEnemy(e,(mpBattle()&&e.ki===3)?9999:dps*dt,dx,dz,d,0); } }
       pvpHurt(player.group.position.x,player.group.position.z,R+0.5,dps*dt);
     } else if(player.flameMesh){ scene.remove(player.flameMesh); player.flameMesh=null; }
 
@@ -1292,7 +1303,7 @@ function update(dt){
       player.orbMeshes.forEach((o,i)=>{ const a=game._orbA+i/want*TAU;
         o.position.set(player.group.position.x+Math.cos(a)*R,1.0,player.group.position.z+Math.sin(a)*R);
         for(const e of enemies){ if(e.dead)continue; const dx=e.group.position.x-o.position.x,dz=e.group.position.z-o.position.z;
-          const d=Math.hypot(dx,dz); if(d<0.55+e.scale*0.6){ hurtEnemy(e,dps*dt,dx,dz,d,0); } }
+          const d=Math.hypot(dx,dz); if(d<0.55+e.scale*0.6){ hurtEnemy(e,(mpBattle()&&e.ki===3)?9999:dps*dt,dx,dz,d,0); } }
         pvpHurt(o.position.x,o.position.z,0.6,dps*dt); });
     }
     }   // end: weapons (skipped while downed)
@@ -1762,7 +1773,7 @@ function pvpFlush(){ if(!mpBattle()||!(MP.pvpAccum>0)) return; const d=Math.roun
 function mpOnPvpHit(snap){ const v=snap.val(); try{ MP._D.remove(snap.ref); }catch(e){}
   if(v&&v.d&&mpBattle()&&player.alive&&player.invuln<=0&&!player.inHouse) takePvpDamage(v.d); }
 function takePvpDamage(d){
-  const dmg=Math.max(1,d-player.armor); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);
+  const dmg=Math.max(1, d*0.4 - player.armor); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);   // PvP armor: take only ~40% (60% reduced)
   document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
   floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78'); game.shake=Math.max(game.shake,0.25); refreshHUD();
   if(player.hp<=0){ player.hp=0; battleDeath(); }
