@@ -260,7 +260,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='20';
+const BUILD='21';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -524,8 +524,13 @@ const projectiles=[]; const projGeo=new THREE.SphereGeometry(0.22,8,8);
 const projMat=new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.4,roughness:0.2});
 function spawnProjectile(origin,dir,dmg,pierce){
   const m=new THREE.Mesh(projGeo,projMat); m.position.set(origin.x,1.0,origin.z); m.scale.setScalar(1.1); scene.add(m);
-  projectiles.push({m,vel:dir.clone().multiplyScalar(24),dmg,pierce,life:0,hit:new Set()});
+  projectiles.push({m,vel:dir.clone().multiplyScalar(24),dmg,pierce,life:0,hit:new Set(),id:(game._pid=(game._pid||0)+1)});
 }
+// shared meshes used to draw the CO-OP PARTNER's attacks (visual only — no collision/damage)
+const remoteOrbGeo=new THREE.SphereGeometry(0.34,12,12);
+const remoteOrbMat=new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.1,roughness:0.2});
+const remoteFlameGeo=new THREE.RingGeometry(0.6,1,40);
+const remoteFlameMat=new THREE.MeshBasicMaterial({color:0xff6a1c,transparent:true,opacity:0.3,side:THREE.DoubleSide,depthWrite:false});
 
 // =================================================================
 //  WEAPON & PASSIVE DEFINITIONS
@@ -1112,7 +1117,7 @@ const firebaseConfig = {
 
 const MP = { enabled:false, db:null, _D:null, roomId:null, role:null, mySlot:null, otherSlot:null,
   joined:false, remote:null, lastWrite:0, teamKills:0, sharedTime:0, _rematching:false,
-  netMap:{}, dmgAccum:{}, _appliedRole:null };
+  netMap:{}, dmgAccum:{}, _appliedRole:null, remoteAtk:null };
 const mpbadge = document.getElementById('mpbadge');
 function setBadge(t,c){ if(!mpbadge)return; mpbadge.textContent=t; mpbadge.style.borderColor=c||'rgba(70,224,200,.4)'; mpbadge.style.display='block'; }
 
@@ -1181,6 +1186,12 @@ function mpEnterRoom(){
     MP._unsubEnem=D.onValue(D.ref(db,`rooms/${MP.roomId}/enemies`),(s)=>mpReconcileEnemies(s.val()));  // render host's swarm
     MP._unsubDeaths=D.onChildAdded(D.ref(db,`rooms/${MP.roomId}/deaths`), mpOnDeathEvent);             // FX + XP on kills
   }
+  // ---- co-op attack visuals (both roles): see the partner's projectiles / orbs / flame ----
+  mpClearRemoteAtkMeshes();
+  MP.remoteAtk = { data:null, proj:{}, orbs:[], flame:null };
+  MP._D.onDisconnect(D.ref(db,`rooms/${MP.roomId}/state/atk_${MP.mySlot}`)).remove();   // clear my attack node when I leave
+  if(MP._unsubAtk){MP._unsubAtk();MP._unsubAtk=null;}
+  MP._unsubAtk=D.onValue(D.ref(db,`rooms/${MP.roomId}/state/atk_${MP.otherSlot}`),(s)=>{ if(MP.remoteAtk) MP.remoteAtk.data=s.val(); });
   setBadge('🟡 相手を待っています…','#ffcf3a');
   // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
   if(MP.role==='guest'){ try{ D.set(goRef,true); }catch(e){} if(game.state==='lobby') startGame(); }
@@ -1268,7 +1279,51 @@ function mpDrawTag(R,txt,alive){
   cx.fillStyle=alive?'#7af7ff':'#ff9aa3'; cx.fillText(txt,128,32);
   R.tag.material.map.needsUpdate=true;
 }
-function mpDestroyRemote(){ if(MP.remote){ scene.remove(MP.remote.group); MP.remote=null; } }
+function mpDestroyRemote(){ if(MP.remote){ scene.remove(MP.remote.group); MP.remote=null; } mpClearRemoteAtkMeshes(); }
+
+// ===================== co-op ATTACK-visual sync (so each player can SEE the other's attacks) =====================
+// Each client broadcasts its own projectiles/orbs/flame to state/atk_<mySlot>; the partner renders dumb visual copies.
+// Uses the already-writable `state` path → no security-rule change needed.
+function mpBroadcastAttacks(){
+  if(!MP.joined) return;
+  const out={ _t:Date.now() };
+  if(projectiles.length){ const p={}; let n=0;
+    for(const pr of projectiles){ if(n++>=48)break; p['p'+pr.id]=[+pr.m.position.x.toFixed(1),+pr.m.position.z.toFixed(1)]; }
+    out.p=p; }
+  if(player.orbMeshes&&player.orbMeshes.length){ const o=[];
+    for(const m of player.orbMeshes){ o.push(+m.position.x.toFixed(1),+m.position.z.toFixed(1)); } out.o=o; }
+  if(player.flameMesh){ out.f=+player.flameMesh.scale.x.toFixed(1); }
+  try{ MP._D.set(MP._D.ref(MP.db,`rooms/${MP.roomId}/state/atk_${MP.mySlot}`), out); }catch(e){}
+}
+function mpClearRemoteAtkMeshes(){ const RA=MP.remoteAtk; if(!RA)return;
+  for(const k in RA.proj){ scene.remove(RA.proj[k]); } RA.proj={};
+  for(const o of RA.orbs){ scene.remove(o); } RA.orbs.length=0;
+  if(RA.flame){ scene.remove(RA.flame); RA.flame=null; }
+  RA.data=null;
+}
+function mpRenderRemoteAtk(dt){
+  const RA=MP.remoteAtk; if(!RA) return;
+  // tear down if the partner left or their data went stale (device slept / disconnected)
+  if(!RA.data || !(MP.remote&&MP.remote.present) || (Date.now()-(RA.data._t||0))>1500){ mpClearRemoteAtkMeshes(); return; }
+  const d=RA.data, k=Math.min(1,dt*14);
+  // --- flying projectiles (per-id, interpolated toward each target) ---
+  const seen={};
+  if(d.p){ for(const key in d.p){ const pos=d.p[key]; seen[key]=1; let m=RA.proj[key];
+      if(!m){ m=new THREE.Mesh(projGeo,projMat); m.scale.setScalar(1.1); m.position.set(pos[0],1.0,pos[1]); scene.add(m); RA.proj[key]=m; }
+      m.userData.tx=pos[0]; m.userData.tz=pos[1]; } }
+  for(const key in RA.proj){ if(!seen[key]){ scene.remove(RA.proj[key]); delete RA.proj[key]; continue; }
+    const m=RA.proj[key]; m.position.x+=(m.userData.tx-m.position.x)*k; m.position.z+=(m.userData.tz-m.position.z)*k; }
+  // --- orbit-guard orbs (index pooled) ---
+  const oc=d.o?(d.o.length>>1):0;
+  while(RA.orbs.length<oc){ const o=new THREE.Mesh(remoteOrbGeo,remoteOrbMat); o.position.y=1.0; scene.add(o); RA.orbs.push(o); }
+  while(RA.orbs.length>oc){ scene.remove(RA.orbs.pop()); }
+  for(let i=0;i<oc;i++){ const m=RA.orbs[i]; m.position.x+=(d.o[i*2]-m.position.x)*k; m.position.z+=(d.o[i*2+1]-m.position.z)*k; m.position.y=1.0; }
+  // --- flame aura ring (centered on the partner's avatar) ---
+  if(d.f && MP.remote && MP.remote.group){ if(!RA.flame){ RA.flame=new THREE.Mesh(remoteFlameGeo,remoteFlameMat.clone()); RA.flame.rotation.x=-Math.PI/2; scene.add(RA.flame); }
+    RA.flame.scale.setScalar(d.f); RA.flame.position.set(MP.remote.group.position.x,0.2,MP.remote.group.position.z);
+    RA.flame.material.opacity=0.25+0.12*Math.abs(Math.sin(game.time*4)); }
+  else if(RA.flame){ scene.remove(RA.flame); RA.flame=null; }
+}
 
 function mpTick(dt){
   if(!MP.enabled||!MP.joined) return;
@@ -1276,7 +1331,7 @@ function mpTick(dt){
   if(now-MP.lastWrite>80){ MP.lastWrite=now; try{ MP._D.update(MP._meRef, mpMyPayload()); }catch(e){} }
   if(MP.role==='host' && now-(MP._lastTW||0)>1000){ MP._lastTW=now; try{ MP._D.set(MP._timeRef, +game.time.toFixed(1)); }catch(e){} }
   // shared-enemy sync
-  if(MP._appliedRole!==MP.role){ MP._appliedRole=MP.role; mpClearAllEnemies(); }   // wipe local list on role flip
+  if(MP._appliedRole!==MP.role){ MP._appliedRole=MP.role; mpClearAllEnemies(); mpClearRemoteAtkMeshes(); }   // wipe local lists on role flip
   if(MP.role==='host'){ if(now-(MP._lastEnem||0)>140){ MP._lastEnem=now; mpBroadcastEnemies(); } }
   else {
     if(now-(MP._lastDmgFlush||0)>120){ MP._lastDmgFlush=now; mpFlushDmg(); }
@@ -1285,6 +1340,9 @@ function mpTick(dt){
     // vanished host: no fresh enemy snapshot for 3s → the host's device slept/left. Re-matchmake (usually become host) so play continues.
     if(MP._enemSnapT && Date.now()-MP._enemSnapT>3000 && !MP._rematching && game.state==='playing'){ mpResetAndRematch(); }
   }
+  // co-op attack visuals: broadcast MY attacks (both roles) so the partner sees them; render THEIRS every frame
+  if(game.state==='playing' && now-(MP._lastAtk||0)>100){ MP._lastAtk=now; mpBroadcastAttacks(); }
+  mpRenderRemoteAtk(dt);
   // live co-op status badge — lets players (and us) see the enemy sync is flowing
   if(MP.remote && MP.remote.present && game.state!=='lobby' && now-(MP._lastBadge||0)>600){ MP._lastBadge=now;
     if(MP.role==='host'){ let n=0; for(const e of enemies) if(!e.net) n++; setBadge(`🟢 ホスト · 敵${n}体配信中`,'#46e0c8'); }
