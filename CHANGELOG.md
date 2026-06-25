@@ -3,6 +3,10 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 55 — 2026/06/25
+- 🌟 3:00 以降の新敵(bat/dragon/skeleton/slime)の**出現率 0.22→0.80**（`pickType` の t>=180 分岐）＝3分以降は大半がこの4体
+- ⬆️ この4体の**XPを3倍**（bat 4→12 / dragon 30→90 / skeleton 7→21 / slime 5→15）でレベルアップ高速化。spawnRing の同時上限8は維持
+
 ## Build 54 — 2026/06/25
 - 🌟 **3:00 経過後に Quaternius の CC0 アニメ付きモンスター4体が通常スポーンに混ざって出現**：🦇bat（速い飛行）/🐉dragon（強い大型・飛行）/💀skeleton（走る）/🟢slime。Drive(CC0 Animated Monster Pack) の FBX を Blender 5.1.2 で glb 変換（`assets/{bat,dragon,skeleton,slime}.glb`・各5前後のアニメ込み）
 - 実装: `MODELS` レジストリ＋`instModel()`（SkeletonUtils.clone＋AnimationMixerで移動クリップ Flying/Running/Walk を再生）。`pickType` に `t>=180` で約22%これらを返す分岐（dragon は低確率）。`buildEnemyMesh` に `MODELS[typeKey]` 分岐（未読込時はslimeにフォールバック）。アニメ更新は enemy ループの `e.mixer` 分岐（飛行=ホバー+bob、地上=小bob、被弾=emissive赤フラッシュ）

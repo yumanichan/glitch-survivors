@@ -325,6 +325,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 55</div>
+      <ul>
+        <li>🌟 3分経過後の新敵（バット/ドラゴン/スケルトン/スライム）の<b>出現率を2割→8割に増加</b>＝3分以降は大半がこの4体に</li>
+        <li>⬆️ この4体の<b>経験値を3倍</b>（バット12/ドラゴン90/スケルトン21/スライム15）＝3分以降のレベルアップが速くなる</li>
+      </ul>
       <div class="clog-day">6/25 — Build 54</div>
       <ul>
         <li>🌟 <b>3分経過後に新しい敵が登場</b>：🦇バット（速い飛行）/🐉ドラゴン（強い大型・飛行）/💀スケルトン（走る）/🟢スライム。Quaternius の<b>CC0アニメ付き3Dモデル</b>（歩行/飛行アニメ再生）。通常スポーンに混ざって出現</li>
@@ -512,7 +517,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='54';
+const BUILD='55';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -814,11 +819,11 @@ const ETYPES={
   swarm: { hue:0.52, lum:0.55, hp:7,  speed:3.8, dmg:3,  scale:0.66, xp:1  },  // 水色・小型の群れ
   ghost: { hue:0.78, lum:0.60, hp:38, speed:3.2, dmg:8,  scale:1.08, xp:5  },  // 紫・中速
   bear6: { hue:0.07, lum:0.30, hp:340,speed:2.2, dmg:22, scale:2.16, xp:40 },  // 🐻 Lv6 巨大グマ（ghost×2サイズ・ノックバック無効・XP40・プレイヤーLv18で出現）
-  // 🌟 Quaternius animated monsters (CC0) — 3:00 以降に出現。hue/lum はモデル未読込時のフォールバックslime用
-  bat:     { hue:0.75, lum:0.35, hp:30, speed:5.0, dmg:7,  scale:1.6, xp:4  },  // 🦇 速い飛行
-  dragon:  { hue:0.02, lum:0.45, hp:260,speed:2.6, dmg:20, scale:3.0, xp:30 },  // 🐉 強い大型飛行
-  skeleton:{ hue:0.12, lum:0.85, hp:60, speed:3.6, dmg:11, scale:2.0, xp:7  },  // 💀 走る中量
-  slime:   { hue:0.33, lum:0.50, hp:40, speed:2.6, dmg:8,  scale:1.3, xp:5  },  // 🟢 基本
+  // 🌟 Quaternius animated monsters (CC0) — 3:00 以降に出現。hue/lum はモデル未読込時のフォールバックslime用。XPは3倍（レベルアップ高速化用）
+  bat:     { hue:0.75, lum:0.35, hp:30, speed:5.0, dmg:7,  scale:1.6, xp:12 },  // 🦇 速い飛行
+  dragon:  { hue:0.02, lum:0.45, hp:260,speed:2.6, dmg:20, scale:3.0, xp:90 },  // 🐉 強い大型飛行
+  skeleton:{ hue:0.12, lum:0.85, hp:60, speed:3.6, dmg:11, scale:2.0, xp:21 },  // 💀 走る中量
+  slime:   { hue:0.33, lum:0.50, hp:40, speed:2.6, dmg:8,  scale:1.3, xp:15 },  // 🟢 基本
 };
 function spawnSlime(x,z,typeKey,boss=false){
   const t=boss?null:(ETYPES[typeKey]||ETYPES.grunt); const ki=boss?-1:ETYPE_KEYS.indexOf(boss?'grunt':(ETYPES[typeKey]?typeKey:'grunt'));
@@ -1354,7 +1359,7 @@ function die(){ player.alive=false; player.down=false; game.state='dead'; game.s
 
 // enemy "level" by strength: swarm=1, runner=2, grunt=3, ghost=4, brute=5
 function pickType(t){ const r=Math.random();         // weighted by elapsed time; tougher types appear later
-  if(t>=180 && Math.random()<0.22){   // 3:00+ — ~22% of spawns are the animated CC0 monsters (dragon rarer)
+  if(t>=180 && Math.random()<0.80){   // 3:00+ — ~80% of spawns are the animated CC0 monsters (dragon rarer)
     const m=Math.random();
     return m<0.12 ? 'dragon' : (m<0.41?'bat': m<0.70?'skeleton':'slime');
   }
