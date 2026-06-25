@@ -3,6 +3,12 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 51 — 2026/06/25
+- 🍎 回復アイテム（リンゴ）を**実3Dモデル `assets/apple.glb`** に差し替え（石井さん作の `apple_final.blend` を Blender 5.1.2 ヘッドレスで GLB 変換）。`dropHeart` で `instApple()`（読込済なら clone、未読込なら赤球フォールバック）。scale 0.085・y-4cm 調整
+- 🐻 巨大グマ（Lv6）を**CC0 モデル `assets/bear.glb`（Hexabear / Polygonal Mind・CC0）** に差し替え。`buildEnemyMesh` の bear6 で `instBear()`（SkeletonUtils.clone・skinned）、未読込/失敗時は手続き熊にフォールバック。ブルート(Lv5)は手続き熊のまま
+- glTF 読込基盤 `GLB`＋ローダー追加。モデル熊はアニメ無しのため「全体の上下動＋被弾時 emissive 赤フラッシュ」で `modelBear` 分岐。`assets/` は `.vercelignore` 対象外＝Vercel が配信
+- ※モデルの向き/サイズは実機確認前提（ヘッドレス検証不可）。ズレたら scale(0.085 / bear archetype 2.16)・回転・y を微調整
+
 ## Build 50 — 2026/06/25
 - 🐻 新アーキタイプ **`bear6`（巨大グマ／Lv6）** 追加：`ETYPES` に hp340/speed2.2/dmg22/scale2.16(ghost×2)/xp40。`player.level>=18` で `game.bear6T` タイマー駆動・約40秒ごとに1体接近スポーン。`noKnock` フラグで**ノックバック無効**（hurtEnemy の knock 適用を `!e.noKnock` でゲート）。procedural bear（濃色）使用、ETYPE_KEYS に追加で net 同期も対応
 - 🐻 熊のアニメ修正：胴体だけ squash する slime 用モーションをやめ、`bearParts`(脚/腕)を持つ敵は**脚・腕を振る歩行＋穏やかな上下動**に分岐。ブルート(Lv5)/巨大グマ(Lv6)両方に適用
