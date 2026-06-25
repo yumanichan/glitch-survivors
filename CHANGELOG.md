@@ -3,6 +3,12 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 54 — 2026/06/25
+- 🌟 **3:00 経過後に Quaternius の CC0 アニメ付きモンスター4体が通常スポーンに混ざって出現**：🦇bat（速い飛行）/🐉dragon（強い大型・飛行）/💀skeleton（走る）/🟢slime。Drive(CC0 Animated Monster Pack) の FBX を Blender 5.1.2 で glb 変換（`assets/{bat,dragon,skeleton,slime}.glb`・各5前後のアニメ込み）
+- 実装: `MODELS` レジストリ＋`instModel()`（SkeletonUtils.clone＋AnimationMixerで移動クリップ Flying/Running/Walk を再生）。`pickType` に `t>=180` で約22%これらを返す分岐（dragon は低確率）。`buildEnemyMesh` に `MODELS[typeKey]` 分岐（未読込時はslimeにフォールバック）。アニメ更新は enemy ループの `e.mixer` 分岐（飛行=ホバー+bob、地上=小bob、被弾=emissive赤フラッシュ）
+- ETYPES に4種追加（bat/dragon/skeleton/slime・hp/speed/dmg/scale/xp）。**perf: 同時モデル敵≤8**（`spawnRing` で超過分は grunt に置換）。net 同期は ETYPE_KEYS 追記でguestも生成
+- ※モデルの向き/サイズ/ホバー高さは実機確認前提（ヘッドレス検証不可）。nscale(1/実寸高さ)で正規化→archetype scale=最終高さ
+
 ## Build 53 — 2026/06/25
 - 📱 **「外に出る」ボタンを2回タップすると画面がズーム/崩れする不具合を修正**（build 52で取り切れなかったケース）。原因＝1回目のタップで `closeShop()` が走り `#levelup` が `display:none` になるため、ダブルタップの**2回目が地面/canvas に当たり**、UI限定だった build 52 のガードをすり抜けて iOS のダブルタップ拡大が発火していた。iOS は「同一座標への素早い2連タップ」だけで拡大判定するので、ガードを **`document` 全体（グローバル）に拡張**。同一座標(±40px)・350ms以内の2連タップだけ `preventDefault()`（`e.cancelable` 時のみ）。単発タップ・別座標の連続タップ・canvas のジョイスティック（touchstart/move 直処理）は不変
 - ※ build 52 は `#levelup,#overlay,…` に `closest()` で限定していたのが穴だった
