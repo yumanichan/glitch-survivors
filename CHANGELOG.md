@@ -3,6 +3,9 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 58 — 2026/06/26
+- ⚔️ **3:00 以降に湧く敵は HP×2・XP×2**。spawnSlime に `lateMul=(!boss && game.time>=180)?2:1` を追加し hp/maxhp/xp に乗算（既存の連続 enemyHpScale に上乗せ。bossは対象外）。難度UP＋レベルアップ加速
+
 ## Build 57 — 2026/06/26
 - 🧪 **テストモード**：keydown に `KeyT` トグル（`game.testMode`）、ON中は `Digit3`→`game.time=180`、`Digit2`→`game.time=120`（playing時のみ）。後半スポーンを待たず検証可。testModeはresetGameで消えず継続
 - 🌟 新敵の**同時出現上限 8→20**（spawnRing の mc 判定）。0.80 ロールは効いていたが上限8で頭打ち＝体感2割だったため引き上げ。※モバイルで重ければ要調整

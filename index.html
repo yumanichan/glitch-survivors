@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 58</div>
+      <ul>
+        <li>⚔️ <b>3分経過後はモンスターのHPとXPが2倍</b>に（3:00以降に出る敵が対象。難度UP＆レベルアップも更に加速）</li>
+      </ul>
       <div class="clog-day">6/26 — Build 57</div>
       <ul>
         <li>🧪 <b>テストモード追加</b>：<b>T</b>でON/OFF。ON中に<b>3</b>で3:00へ・<b>2</b>で2:00へ即ジャンプ（新敵を待たずに確認できる）</li>
@@ -526,7 +530,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='57';
+const BUILD='58';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -846,10 +850,11 @@ function spawnSlime(x,z,typeKey,boss=false){
   const scale=boss?3.4:t.scale;
   g.scale.setScalar(scale); g.position.set(x,0,z); scene.add(g);
   const baseHp=boss?1000:t.hp;
+  const lateMul=(!boss && game.time>=180)?2:1;   // 3:00+ → monsters get 2× HP and 2× XP
   const e={ id:'e'+(enemyIdCounter++), group:g,body,ki,boss,scale, bearParts:parts, modelBear:!!model, mixer:mixer||null, fly:!!fly, noKnock:(key==='bear6'),
-    hp:baseHp*enemyHpScale, maxhp:baseHp*enemyHpScale,
+    hp:baseHp*enemyHpScale*lateMul, maxhp:baseHp*enemyHpScale*lateMul,
     speed:boss?2.0:t.speed, dmg:(boss?28:t.dmg)*enemyDmgScale,
-    xp:boss?55:t.xp, hop:Math.random()*TAU, hurtFlash:0, atkCd:0, dead:false };
+    xp:(boss?55:t.xp)*lateMul, hop:Math.random()*TAU, hurtFlash:0, atkCd:0, dead:false };
   enemies.push(e); return e;
 }
 
