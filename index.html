@@ -325,9 +325,13 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 53</div>
+      <ul>
+        <li>📱 <b>「外に出る」を2回タップすると画面がズーム/崩れする不具合を修正</b>（build 52で取り切れていなかったケース）。1回目のタップでショップが閉じ、2回目が地面に当たって判定をすり抜けていたため、ダブルタップ拡大の抑止を<b>画面全体に拡張</b>（同一座標・350ms以内の2連タップだけ無効化）</li>
+      </ul>
       <div class="clog-day">6/25 — Build 52</div>
       <ul>
-        <li>📱 iPhoneでショップ等を<b>2回タップすると画面がズームして崩れる不具合を修正</b>。同じ場所への素早い2連タップ（iOSのダブルタップ拡大）をUI上だけ無効化。カードの連続タップやジョイスティック操作には影響なし</li>
+        <li>📱 iPhoneでショップ等を<b>2回タップすると画面がズームして崩れる不具合を修正</b>（第一弾。UI内のみ抑止）</li>
       </ul>
       <div class="clog-day">6/25 — Build 51</div>
       <ul>
@@ -503,7 +507,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='52';
+const BUILD='53';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1190,18 +1194,20 @@ function endTouch(e){ e.preventDefault();
 renderer.domElement.addEventListener('touchend',endTouch,{passive:false});
 renderer.domElement.addEventListener('touchcancel',endTouch,{passive:false});
 
-// iOS double-tap-to-zoom still fires in some Safari/webviews even with touch-action+user-scalable=no
-// (Apple ignores user-scalable). Kill the synthetic zoom by canceling a fast SAME-SPOT 2nd tap — but
-// only inside UI overlays (never the canvas/joystick), and only when both taps land within ~40px so
-// tapping two different shop cards quickly still works. This is what made the shop "jump/zoom" on 2-tap.
+// iOS double-tap-to-zoom still fires even with touch-action + user-scalable=no (Apple ignores
+// user-scalable). Kill the synthetic zoom by canceling a fast SAME-SPOT 2nd tap. This runs GLOBALLY
+// (document-wide): iOS judges the double-tap purely on "two quick taps at one spot", so we must catch
+// the 2nd tap wherever it lands — e.g. tapping "外に出る" closes the shop, so the 2nd tap of that
+// double-tap hits bare ground/canvas, not the button (that case used to slip through and zoom).
+// Only same-spot (<40px) within 350ms is canceled, so tapping two different cards quickly still works,
+// and preventDefault only stops the browser's zoom/synthetic-click — the game's own touch listeners
+// (joystick on the canvas) run regardless, since they use touchstart/move directly.
 (function(){
   let lt=0,lx=0,ly=0;
-  const UI='#levelup,#overlay,#topbar,#shopBtn,#clogFab,#muteBtn,#changelog,#shopBtns';
   document.addEventListener('touchend',function(e){
-    if(!e.target||!e.target.closest||!e.target.closest(UI)) return;
     const t=(e.changedTouches&&e.changedTouches[0])||{};
     const x=t.clientX||0,y=t.clientY||0,now=Date.now();
-    if(now-lt<=350 && Math.abs(x-lx)<40 && Math.abs(y-ly)<40) e.preventDefault();
+    if(now-lt<=350 && Math.abs(x-lx)<40 && Math.abs(y-ly)<40 && e.cancelable) e.preventDefault();
     lt=now; lx=x; ly=y;
   },{passive:false});
 })();

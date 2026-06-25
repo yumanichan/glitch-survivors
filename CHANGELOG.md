@@ -3,9 +3,9 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
-## Build 52 — 2026/06/25
-- 📱 iPhone でショップ等を **2回タップすると画面がズームして崩れる不具合を修正**。`user-scalable=no`/`maximum-scale=1` は iOS Safari が無視するため、JS で「UIオーバーレイ内（`#levelup`/`#overlay`/トップバー等）の **同一座標(±40px)・350ms以内の2連タップ**」だけ `preventDefault()` してダブルタップ拡大を抑止。canvas/ジョイスティックや別カードへの連続タップは対象外（座標判定で誤爆しない）。CSS でも `#levelup *` に `touch-action:manipulation` を追加して二重防御
-- ※ build 40 の `touch-action:manipulation` はカード等にのみ付与で、パネル余白/見出しを素通りしていたのが原因
+## Build 53 — 2026/06/25
+- 📱 **「外に出る」ボタンを2回タップすると画面がズーム/崩れする不具合を修正**（build 52で取り切れなかったケース）。原因＝1回目のタップで `closeShop()` が走り `#levelup` が `display:none` になるため、ダブルタップの**2回目が地面/canvas に当たり**、UI限定だった build 52 のガードをすり抜けて iOS のダブルタップ拡大が発火していた。iOS は「同一座標への素早い2連タップ」だけで拡大判定するので、ガードを **`document` 全体（グローバル）に拡張**。同一座標(±40px)・350ms以内の2連タップだけ `preventDefault()`（`e.cancelable` 時のみ）。単発タップ・別座標の連続タップ・canvas のジョイスティック（touchstart/move 直処理）は不変
+- ※ build 52 は `#levelup,#overlay,…` に `closest()` で限定していたのが穴だった
 
 ## Build 51 — 2026/06/25
 - 🍎 回復アイテム（リンゴ）を**実3Dモデル `assets/apple.glb`** に差し替え（石井さん作の `apple_final.blend` を Blender 5.1.2 ヘッドレスで GLB 変換）。`dropHeart` で `instApple()`（読込済なら clone、未読込なら赤球フォールバック）。scale 0.085・y-4cm 調整
