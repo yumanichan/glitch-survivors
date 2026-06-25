@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 56</div>
+      <ul>
+        <li>🐛 <b>新敵（バット/ドラゴン/スケルトン/スライム）が透明で見えなかった不具合を修正</b>。FBX→glb変換でマテリアルの不透明度が0になっていたのが原因。これで3分経過後にちゃんと姿が見えます</li>
+      </ul>
       <div class="clog-day">6/25 — Build 55</div>
       <ul>
         <li>🌟 3分経過後の新敵（バット/ドラゴン/スケルトン/スライム）の<b>出現率を2割→8割に増加</b>＝3分以降は大半がこの4体に</li>
@@ -517,7 +521,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='55';
+const BUILD='56';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -791,16 +795,19 @@ const MODELS={
   for(const k in all){ const slot=all[k];
     L.load(slot.url, gltf=>{ slot.scene=gltf.scene; slot.clips=gltf.animations||[]; slot.scene.traverse(o=>{ if(o.isMesh){ o.castShadow=false; o.frustumCulled=false; } }); },
       undefined, err=>{ console.warn('GLB load failed:',k,err); }); } })();
+// FBX→glb conversion can bake baseColor alpha=0 (material.opacity:0) → invisible meshes. Clone every material OPAQUE.
+function opaqueClone(o){ if(!o.material) return; const f=m=>{ const c=m.clone(); c.transparent=false; c.opacity=1; c.depthWrite=true; return c; };
+  o.material = Array.isArray(o.material) ? o.material.map(f) : f(o.material); }
 function instApple(){ if(!GLB.apple.scene) return null;   // returns a Group, or null if not loaded yet
-  const m=GLB.apple.scene.clone(true); m.traverse(o=>{ if(o.isMesh&&o.material) o.material=o.material.clone(); });
+  const m=GLB.apple.scene.clone(true); m.traverse(o=>{ if(o.isMesh) opaqueClone(o); });
   m.scale.setScalar(0.085); m.position.y=-0.04; const g=new THREE.Group(); g.add(m); return g; }
 function instBear(){ if(!GLB.bear.scene) return null;     // returns {group, body} (skinned), or null
   let m; try{ m=cloneSkeleton(GLB.bear.scene); }catch(e){ return null; }
-  let body=null; m.traverse(o=>{ if(o.isMesh){ if(o.material) o.material=o.material.clone(); if(!body) body=o; } });
+  let body=null; m.traverse(o=>{ if(o.isMesh){ opaqueClone(o); o.frustumCulled=false; if(!body) body=o; } });
   if(!body) return null; const g=new THREE.Group(); g.add(m); return {group:g, body}; }
 function instModel(key){ const slot=MODELS[key]; if(!slot||!slot.scene) return null;   // animated monster instance: {group, body, mixer, fly}
   let m; try{ m=cloneSkeleton(slot.scene); }catch(e){ return null; }
-  let body=null; m.traverse(o=>{ if(o.isMesh){ if(o.material) o.material=o.material.clone(); o.frustumCulled=false; if(!body) body=o; } });
+  let body=null; m.traverse(o=>{ if(o.isMesh){ opaqueClone(o); o.frustumCulled=false; if(!body) body=o; } });
   if(!body) return null;
   m.scale.setScalar(slot.nscale); const g=new THREE.Group(); g.add(m);
   let mixer=null;

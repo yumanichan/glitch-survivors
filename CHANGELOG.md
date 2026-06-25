@@ -3,6 +3,9 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 56 — 2026/06/25
+- 🐛 **新モデル敵（bat/dragon/skeleton/slime）が完全透明で描画されない不具合を修正**。原因＝FBX→glb 変換でマテリアルの baseColor alpha=0（`material.opacity:0`）が焼き込まれていた（メッシュ・スキン・座標は正常、opacityだけ0で不可視）。CINC+`window.__rpg` で実機検証→opacity=1 で即描画を確認。`opaqueClone()` を追加し instApple/instBear/instModel の全マテリアルを `transparent:false / opacity:1 / depthWrite:true` でクローン（Hexabear/apple にも予防適用）
+
 ## Build 55 — 2026/06/25
 - 🌟 3:00 以降の新敵(bat/dragon/skeleton/slime)の**出現率 0.22→0.80**（`pickType` の t>=180 分岐）＝3分以降は大半がこの4体
 - ⬆️ この4体の**XPを3倍**（bat 4→12 / dragon 30→90 / skeleton 7→21 / slime 5→15）でレベルアップ高速化。spawnRing の同時上限8は維持
