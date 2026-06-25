@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 48</div>
+      <ul>
+        <li>🛡️ アーマー（パッシブ）を固定値→<b>割合カットに変更</b>：1レベルごとに被ダメ <b>-14%</b>、最大Lv5で <b>-70%カット</b>（PvPの基礎カットにも重ねて適用）</li>
+      </ul>
       <div class="clog-day">6/25 — Build 47</div>
       <ul>
         <li>🚪 ショップ（家）から「外に出る」と<b>フィールドのランダムな位置に戻る＋約0.8秒の無敵</b>に。出口での待ち伏せ対策（全モード）</li>
@@ -479,7 +483,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='47';
+const BUILD='48';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -839,7 +843,7 @@ const PDEF={
   mag:{ name:'マグネット', emoji:'🧲', max:5, d:'回収範囲 +45%', apply(){player.magnet*=1.45;} },
   wis:{ name:'ウィズダム', emoji:'📘', max:5, d:'経験値 +20%', apply(){player.growth+=0.20;} },
   regen:{ name:'リジェネ', emoji:'✚', max:5, d:'毎秒 HP+0.7', apply(){player.regen+=0.7;} },
-  armor:{ name:'アーマー', emoji:'🛡️', max:5, d:'被ダメージ -2', apply(){player.armor+=2;} },
+  armor:{ name:'アーマー', emoji:'🛡️', max:5, d:'被ダメージ -14%（最大-70%）', apply(){player.armor=Math.min(0.7, player.armor+0.14);} },   // % damage cut, +14%/Lv, caps at 70%
   crit:{ name:'クリティカル', emoji:'💥', max:5, d:'確率でダメージ2倍', apply(){player.crit=(player.crit||0)+0.12;} },
   multi:{ name:'マルチショット', emoji:'🔁', max:3, d:'弾数 +1', apply(){player.amount=(player.amount||0)+1;} },
   leech:{ name:'ライフスティール', emoji:'🩸', max:5, d:'撃破で HP+1', apply(){player.lifesteal=(player.lifesteal||0)+1;} },
@@ -907,7 +911,7 @@ function flashScreen(){ const f=document.getElementById('flashfx'); f.style.opac
 
 function hurtPlayer(n){
   if(!player.alive||player.down||player.hurtCd>0||player.invuln>0||player.inHouse)return;   // invulnerable while downed/respawning/sheltering
-  const dmg=Math.max(1,n-player.armor);
+  const dmg=Math.max(1, n*(1-player.armor));   // armor passive: % damage cut (max 70%)
   player.hp-=dmg; player.hurtCd=0.5; sfx.hurt();
   document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
   floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78');
@@ -1810,7 +1814,7 @@ function pvpFlush(){ if(!mpBattle()||!(MP.pvpAccum>0)) return; const d=Math.roun
 function mpOnPvpHit(snap){ const v=snap.val(); try{ MP._D.remove(snap.ref); }catch(e){}
   if(v&&v.d&&mpBattle()&&player.alive&&player.invuln<=0&&!player.inHouse) takePvpDamage(v.d); }
 function takePvpDamage(d){
-  const dmg=Math.max(1, d*0.7 - player.armor); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);   // PvP armor: 30% cut (take 70%)
+  const dmg=Math.max(1, d*0.7*(1-player.armor)); player.hp-=dmg; player.hurtCd=Math.max(player.hurtCd,0.18);   // PvP: base 30% cut, then armor passive % cut
   document.getElementById('hurt').classList.add('flash'); setTimeout(()=>document.getElementById('hurt').classList.remove('flash'),110);
   floatText(player.group.position.clone().add(new THREE.Vector3(0,3,0)),'-'+Math.round(dmg),'#ff6b78'); game.shake=Math.max(game.shake,0.25); refreshHUD();
   if(player.hp<=0){ player.hp=0; battleDeath(); }
