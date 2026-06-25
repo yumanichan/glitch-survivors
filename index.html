@@ -325,6 +325,19 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 47</div>
+      <ul>
+        <li>🚪 ショップ（家）から「外に出る」と<b>フィールドのランダムな位置に戻る＋約0.8秒の無敵</b>に。出口での待ち伏せ対策（全モード）</li>
+        <li>👥 協力/対戦で<b>相手が一瞬消える現象を軽減</b>：通信の瞬断（null）では即非表示にせず、2.5秒データが来ない時だけ退出扱いに</li>
+      </ul>
+      <div class="clog-day">6/25 — Build 46</div>
+      <ul>
+        <li>🔧 ボルト自動成長が<b>ロードアウトのレベル表示に即反映</b>されるよう修正（レベルアップ時に表示更新が漏れていた）。自動成長でMAX到達時の<b>ストームボルト進化</b>も発火するように</li>
+      </ul>
+      <div class="clog-day">6/25 — Build 45</div>
+      <ul>
+        <li>✨ マジックボルトの<b>自動レベル上げ</b>を全モードに展開（バトルだけ→<b>協力・ソロでもレベルアップで自動強化</b>）。自動成長するためショップのボルトカードは廃止</li>
+      </ul>
       <div class="clog-day">6/25 — Build 44</div>
       <ul>
         <li>⚔️ バトルのアーマー：被ダメ軽減を60%→<b>30%カット</b>に変更（打ち合いがやや早くなる）</li>
@@ -466,7 +479,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='44';
+const BUILD='47';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -937,8 +950,9 @@ function addXP(v){ player.xp+=v*player.growth;
   // each filled XP meter = 1 level = +1 shop credit (spend later in the 🛒 shop / house). No forced popup.
   let leveled=false;
   while(player.xp>=player.xpNext && game.state!=='dead'){ consumeLevel(); player.credits=(player.credits||0)+1; leveled=true;
-    if(mpBattle()) player.weapons.bolt=Math.min(WDEF.bolt.max,(player.weapons.bolt||1)+1); }   // battle: bolt auto-levels (no card)
-  if(leveled){ sfx.level(); game.shake=Math.max(game.shake,0.22); toast(mpBattle()?'⬆ レベルアップ！':'🛒 強化チケット +1','gold'); }
+    player.weapons.bolt=Math.min(WDEF.bolt.max,(player.weapons.bolt||1)+1); }   // bolt auto-levels every level (all modes: battle / co-op / solo)
+  if(leveled){ sfx.level(); game.shake=Math.max(game.shake,0.22); toast(mpBattle()?'⬆ レベルアップ！':'🛒 強化チケット +1','gold');
+    checkEvolutions(); renderLoadout('bolt'); }   // reflect the bolt auto-level on the loadout pip + allow its evolution to fire
   refreshHUD(); updateShopBtn();
 }
 function consumeLevel(){ player.xp-=player.xpNext; player.level++; player.xpNext=Math.round(player.xpNext*1.32+4); }
@@ -966,12 +980,26 @@ function openShop(){
   const cards=document.getElementById('cards');
   requestAnimationFrame(()=>{ lu.style.height=window.innerHeight+'px'; cards.style.display='none'; void cards.offsetHeight; cards.style.display=''; cards.scrollTop=0; });
 }
+// pick a random field spot near (fx,fz), kept inside the world and clear of props — used to dodge shop-exit ambushes
+function randomFieldSpot(fx,fz){
+  for(let i=0;i<24;i++){
+    const a=Math.random()*TAU, dist=rand(14,24);
+    let x=fx+Math.cos(a)*dist, z=fz+Math.sin(a)*dist;
+    const dc=Math.hypot(x,z); if(dc>WORLD-6){ x*=(WORLD-6)/dc; z*=(WORLD-6)/dc; }   // keep inside the playfield
+    let ok=true; for(const o of obstacles){ const dx=x-o.x,dz=z-o.z; if(dx*dx+dz*dz < (o.r+1.2)*(o.r+1.2)){ ok=false; break; } }
+    if(ok) return {x,z};
+  }
+  return {x:fx,z:fz};   // fallback: stay put
+}
 function closeShop(){
   if(!game.shopping) return;
   const mp=MP.enabled&&MP.joined;
   game.shopping=false;
   const lu=document.getElementById('levelup'); lu.classList.remove('show','house','shop','mp'); lu.style.height='';
   exitHouse(); if(!mp && game.state==='levelup') game.state='playing';
+  // leave the shop at a RANDOM nearby field spot + brief shield so campers can't ambush the exit
+  const s=randomFieldSpot(player.group.position.x, player.group.position.z);
+  player.group.position.set(s.x,0,s.z); player.invuln=Math.max(player.invuln,0.8);
   updateShopBtn();
 }
 // snapshot/refund so 選び直す can undo all purchases made this shop visit
@@ -999,7 +1027,7 @@ function renderShop(){
     if(affordable) c.onclick=()=>buyCard(type,id);
     cont.appendChild(c);
   };
-  for(const id in WDEF){ if(mpBattle()&&id==='bolt')continue; mk('w',id); }   // battle: bolt auto-levels, not a card
+  for(const id in WDEF){ if(id==='bolt')continue; mk('w',id); }   // bolt auto-levels every level (all modes) → not a shop card
   for(const id in PDEF) mk('p',id);
   const sr=document.getElementById('shopReset');   // show 選び直す only after you've spent at least 1 credit this visit
   if(sr) sr.style.display = (game._shopSnap && credits < game._shopSnap.credits) ? 'inline-block' : 'none';
@@ -1589,11 +1617,12 @@ function mpMyPayload(){
 
 function mpOnRemote(d){
   if(!d){
-    if(MP.remote && MP.remote.present){ toast('👋 相手が退出','bad'); MP.remote.present=false; MP.remote.group.visible=false; }
+    MP._remoteGoneAt = MP._remoteGoneAt || Date.now();   // de-bounce: a single null read is usually a network blip — mpTick hides only after a real gap
     if(MP.joined) setBadge('🟡 相手を待っています…','#ffcf3a');
     return;
   }
   if(!MP.remote) mpCreateRemote();
+  MP._remoteGoneAt=0;   // fresh data → cancel any pending hide
   const wasPresent=MP.remote.present;
   MP.remote.present=true; MP.remote.group.visible=true; MP.remote.data=d;
   MP.remote.target.set(d.x,0,d.z); MP.remote.ry=d.ry;
@@ -1737,13 +1766,17 @@ function mpTick(dt){
   }
   const R=MP.remote;
   if(R && R.present){
-    R.group.visible = !mpRemoteInHouse();   // R6: partner is invisible while sheltering in their house
-    R.group.position.lerp(R.target, Math.min(1,dt*10));
-    let df=R.ry-R.group.rotation.y; while(df>Math.PI)df-=TAU; while(df<-Math.PI)df+=TAU;
-    R.group.rotation.y+=df*Math.min(1,dt*10);
-    const an=R.data.anim||'Idle';
-    if(R.mixer && R.actions[an] && R.lastAnim!==an){ if(R.current)R.current.fadeOut(0.2); R.actions[an].reset().fadeIn(0.2).play(); R.current=R.actions[an]; R.lastAnim=an; }
-    if(R.mixer) R.mixer.update(dt);
+    if(MP._remoteGoneAt && Date.now()-MP._remoteGoneAt>2500){   // partner truly gone (not a brief blip) → hide now
+      R.present=false; R.group.visible=false; toast('👋 相手が退出','bad');
+    } else {
+      R.group.visible = !mpRemoteInHouse();   // R6: partner is invisible while sheltering in their house
+      R.group.position.lerp(R.target, Math.min(1,dt*10));
+      let df=R.ry-R.group.rotation.y; while(df>Math.PI)df-=TAU; while(df<-Math.PI)df+=TAU;
+      R.group.rotation.y+=df*Math.min(1,dt*10);
+      const an=R.data.anim||'Idle';
+      if(R.mixer && R.actions[an] && R.lastAnim!==an){ if(R.current)R.current.fadeOut(0.2); R.actions[an].reset().fadeIn(0.2).play(); R.current=R.actions[an]; R.lastAnim=an; }
+      if(R.mixer) R.mixer.update(dt);
+    }
   }
 }
 
