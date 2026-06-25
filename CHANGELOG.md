@@ -3,6 +3,10 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 57 — 2026/06/26
+- 🧪 **テストモード**：keydown に `KeyT` トグル（`game.testMode`）、ON中は `Digit3`→`game.time=180`、`Digit2`→`game.time=120`（playing時のみ）。後半スポーンを待たず検証可。testModeはresetGameで消えず継続
+- 🌟 新敵の**同時出現上限 8→20**（spawnRing の mc 判定）。0.80 ロールは効いていたが上限8で頭打ち＝体感2割だったため引き上げ。※モバイルで重ければ要調整
+
 ## Build 56 — 2026/06/25
 - 🐛 **新モデル敵（bat/dragon/skeleton/slime）が完全透明で描画されない不具合を修正**。原因＝FBX→glb 変換でマテリアルの baseColor alpha=0（`material.opacity:0`）が焼き込まれていた（メッシュ・スキン・座標は正常、opacityだけ0で不可視）。CINC+`window.__rpg` で実機検証→opacity=1 で即描画を確認。`opaqueClone()` を追加し instApple/instBear/instModel の全マテリアルを `transparent:false / opacity:1 / depthWrite:true` でクローン（Hexabear/apple にも予防適用）
 

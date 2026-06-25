@@ -325,6 +325,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 57</div>
+      <ul>
+        <li>🧪 <b>テストモード追加</b>：<b>T</b>でON/OFF。ON中に<b>3</b>で3:00へ・<b>2</b>で2:00へ即ジャンプ（新敵を待たずに確認できる）</li>
+        <li>🌟 3分以降の新敵の<b>同時出現上限を8→20に増加</b>＝実際に「大半が4体」になる（以前は上限8で頭打ちで2割程度に見えていた）</li>
+      </ul>
       <div class="clog-day">6/25 — Build 56</div>
       <ul>
         <li>🐛 <b>新敵（バット/ドラゴン/スケルトン/スライム）が透明で見えなかった不具合を修正</b>。FBX→glb変換でマテリアルの不透明度が0になっていたのが原因。これで3分経過後にちゃんと姿が見えます</li>
@@ -521,7 +526,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='56';
+const BUILD='57';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1198,6 +1203,12 @@ const keys={};
 addEventListener('keydown',e=>{ keys[e.code]=true;
   if(e.code==='Space'){e.preventDefault(); if(game.state==='playing'&&!game.shopping)doDash();}
   if(e.code==='KeyB'){ e.preventDefault(); if(game.shopping) closeShop(); else openShop(); }   // B = open/close shop
+  // 🧪 test mode: T toggles; while ON, 3→jump to 3:00, 2→jump to 2:00 (skips the wait to test late-game spawns)
+  if(e.code==='KeyT'){ game.testMode=!game.testMode; toast(game.testMode?'🧪 テストモード ON（3=3分 / 2=2分）':'🧪 テストモード OFF', game.testMode?'gold':'bad'); }
+  if(game.testMode && game.state==='playing'){
+    if(e.code==='Digit3'){ game.time=180; toast('⏩ 3:00 へジャンプ','gold'); }
+    if(e.code==='Digit2'){ game.time=120; toast('⏩ 2:00 へジャンプ','gold'); }
+  }
   if(game.shopping && (e.code==='Escape'||e.code==='Enter')){ e.preventDefault(); closeShop(); }
 });
 addEventListener('keyup',e=>keys[e.code]=false);
@@ -1385,7 +1396,7 @@ function spawnRing(n){
     const a=base + (i/n)*TAU + rand(-0.35,0.35);      // evenly spread around the player → comes from every side
     const d=rand(26,38);
     let type=pickType(game.time);
-    if(MODELS[type]){ if(mc>=8) type='grunt'; else mc++; }   // perf: cap concurrent animated monsters
+    if(MODELS[type]){ if(mc>=20) type='grunt'; else mc++; }   // perf: cap concurrent animated monsters (raised 8→20 so the 80% is actually felt)
     spawnSlime(p.x+Math.cos(a)*d, p.z+Math.sin(a)*d, type); }
 }
 
