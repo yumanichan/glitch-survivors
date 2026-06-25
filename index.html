@@ -325,6 +325,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/25 — Build 49</div>
+      <ul>
+        <li>🎯 バトル：<b>射程を約半分</b>に（弾の寿命2.6→1.3秒・距離70→35）。近距離での撃ち合いに。ソロ・協力は据え置き</li>
+        <li>🐻 brute（赤の大型・低速の敵）を<b>熊っぽい見た目に差し替え</b>（手続き生成のローポリ熊・ソロ/協力両対応）。性能は変更なし</li>
+      </ul>
       <div class="clog-day">6/25 — Build 48</div>
       <ul>
         <li>🛡️ アーマー（パッシブ）を固定値→<b>割合カットに変更</b>：1レベルごとに被ダメ <b>-14%</b>、最大Lv5で <b>-70%カット</b>（PvPの基礎カットにも重ねて適用）</li>
@@ -483,7 +488,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='48';
+const BUILD='49';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -704,6 +709,35 @@ function fade(name,dur=0.2){ if(!player.mixer||!player.actions[name])return; con
 // =================================================================
 const enemies=[]; const slimeGeo=new THREE.IcosahedronGeometry(0.7,1);
 const eyeGeo=new THREE.SphereGeometry(0.12,6,6);
+// 🐻 procedural low-poly bear (used for the 'brute' archetype) — shared geometries so spawns stay cheap
+const bearGeo={ torso:new THREE.BoxGeometry(0.9,0.85,0.65), head:new THREE.BoxGeometry(0.66,0.6,0.56),
+  ear:new THREE.BoxGeometry(0.2,0.2,0.12), snout:new THREE.BoxGeometry(0.34,0.28,0.26), limb:new THREE.BoxGeometry(0.25,0.46,0.3) };
+const bearNoseGeo=new THREE.SphereGeometry(0.09,6,6);
+function buildBear(){
+  const mat=new THREE.MeshStandardMaterial({color:0x7a4a2a,emissive:0x3a2412,emissiveIntensity:0.25,roughness:0.7,flatShading:true});
+  const dark=new THREE.MeshStandardMaterial({color:0x160d06,roughness:0.5});
+  const g=new THREE.Group();
+  const torso=new THREE.Mesh(bearGeo.torso,mat); torso.position.y=0.8; g.add(torso);          // e.body = torso (hurt-flash / squash use this)
+  const head=new THREE.Mesh(bearGeo.head,mat); head.position.set(0,1.45,0.16); g.add(head);
+  for(const sx of [-0.24,0.24]){ const ear=new THREE.Mesh(bearGeo.ear,mat); ear.position.set(sx,1.8,0.12); g.add(ear); }
+  const snout=new THREE.Mesh(bearGeo.snout,mat); snout.position.set(0,1.36,0.42); g.add(snout);
+  const nose=new THREE.Mesh(bearNoseGeo,dark); nose.position.set(0,1.4,0.57); g.add(nose);
+  for(const sx of [-0.16,0.16]){ const eye=new THREE.Mesh(eyeGeo,dark); eye.scale.setScalar(0.6); eye.position.set(sx,1.6,0.36); g.add(eye); }
+  for(const sx of [-0.52,0.52]){ const arm=new THREE.Mesh(bearGeo.limb,mat); arm.position.set(sx,0.85,0.04); g.add(arm); }
+  for(const sx of [-0.24,0.24]){ const leg=new THREE.Mesh(bearGeo.limb,mat); leg.position.set(sx,0.28,0.04); g.add(leg); }
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
+  return {group:g, torso};
+}
+// build an enemy's visual: 🐻 bear for 'brute', otherwise the glitch-slime. returns {group, body}
+function buildEnemyMesh(typeKey,boss,col){
+  const g=new THREE.Group();
+  if(!boss && typeKey==='brute'){ const b=buildBear(); g.add(b.group); return {group:g, body:b.torso}; }
+  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
+  body.castShadow=false; body.position.y=0.7; g.add(body);
+  const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
+  for(const sx of [-0.22,0.22]){ const ey=new THREE.Mesh(eyeGeo,eyeMat); ey.position.set(sx,0.85,0.55); g.add(ey); }
+  return {group:g, body};
+}
 let enemyHpScale=1, enemyDmgScale=1, enemyIdCounter=0;
 // 5 enemy archetypes — varied HP / speed / damage / size so the swarm presses from all sides
 const ETYPE_KEYS=['grunt','runner','brute','swarm','ghost'];
@@ -719,11 +753,8 @@ function spawnSlime(x,z,typeKey,boss=false){
   const t=boss?null:(ETYPES[typeKey]||ETYPES.grunt); const ki=boss?-1:ETYPE_KEYS.indexOf(boss?'grunt':(ETYPES[typeKey]?typeKey:'grunt'));
   const hue=boss?0.0:t.hue, lum=boss?0.4:t.lum;
   const col=new THREE.Color().setHSL(hue,0.7,lum);
-  const g=new THREE.Group();
-  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
-  body.castShadow=false; body.position.y=0.7; g.add(body);   // enemies don't cast shadows (perf: many of them)
-  const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
-  for(const sx of [-0.22,0.22]){ const e=new THREE.Mesh(eyeGeo,eyeMat); e.position.set(sx,0.85,0.55); g.add(e); }
+  const key=boss?null:(ETYPES[typeKey]?typeKey:'grunt');
+  const {group:g, body}=buildEnemyMesh(key,boss,col);
   const scale=boss?3.4:t.scale;
   g.scale.setScalar(scale); g.position.set(x,0,z); scene.add(g);
   const baseHp=boss?1000:t.hp;
@@ -1361,7 +1392,8 @@ function update(dt){
     // blocked by houses/trees/rocks — attacks don't pass through walls
     if(pr.pierce>=0){ for(const o of obstacles){ const ox=pr.m.position.x-o.x, oz=pr.m.position.z-o.z; const min=o.r+0.15;
       if(ox*ox+oz*oz < min*min){ pr.pierce=-1; burst(pr.m.position.clone(),0x9af0ff,4,0.5); break; } } }
-    if(pr.pierce<0||pr.life>2.6||Math.hypot(pr.m.position.x-player.group.position.x,pr.m.position.z-player.group.position.z)>70){
+    const maxLife=mpBattle()?1.3:2.6, maxDist=mpBattle()?35:70;   // battle: ~half range so fights stay close (solo/co-op unchanged)
+    if(pr.pierce<0||pr.life>maxLife||Math.hypot(pr.m.position.x-player.group.position.x,pr.m.position.z-player.group.position.z)>maxDist){
       scene.remove(pr.m); projectiles.splice(i,1); }
   }
 
@@ -1860,11 +1892,8 @@ function mpMakeNetEnemy(id,d){
   const boss=!!d.b; const t=boss?null:(ETYPES[ETYPE_KEYS[d.k]]||ETYPES.grunt);
   const scale=boss?3.4:t.scale;
   const hue=boss?0:t.hue, lum=boss?0.4:t.lum; const col=new THREE.Color().setHSL(hue,0.7,lum);
-  const g=new THREE.Group();
-  const body=new THREE.Mesh(slimeGeo,new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.25,roughness:0.35,flatShading:true,transparent:true,opacity:0.94}));
-  body.castShadow=false; body.position.y=0.7; g.add(body);   // enemies don't cast shadows (perf: many of them)
-  const eyeMat=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.6});
-  for(const sx of [-0.22,0.22]){ const ey=new THREE.Mesh(eyeGeo,eyeMat); ey.position.set(sx,0.85,0.55); g.add(ey); }
+  const key=boss?null:ETYPE_KEYS[d.k];
+  const {group:g, body}=buildEnemyMesh((key&&ETYPES[key])?key:'grunt',boss,col);
   g.scale.setScalar(scale); g.position.set(d.x,0,d.z); scene.add(g);
   const e={ id, group:g, body, scale, boss, net:true, ki:(boss?-1:d.k), dmg:(boss?28:t.dmg),
     hp:99999, hop:Math.random()*TAU, hurtFlash:0, atkCd:0, dead:false, netTarget:{x:d.x,z:d.z} };
