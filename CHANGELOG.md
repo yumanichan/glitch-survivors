@@ -3,6 +3,10 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 52 — 2026/06/25
+- 📱 iPhone でショップ等を **2回タップすると画面がズームして崩れる不具合を修正**。`user-scalable=no`/`maximum-scale=1` は iOS Safari が無視するため、JS で「UIオーバーレイ内（`#levelup`/`#overlay`/トップバー等）の **同一座標(±40px)・350ms以内の2連タップ**」だけ `preventDefault()` してダブルタップ拡大を抑止。canvas/ジョイスティックや別カードへの連続タップは対象外（座標判定で誤爆しない）。CSS でも `#levelup *` に `touch-action:manipulation` を追加して二重防御
+- ※ build 40 の `touch-action:manipulation` はカード等にのみ付与で、パネル余白/見出しを素通りしていたのが原因
+
 ## Build 51 — 2026/06/25
 - 🍎 回復アイテム（リンゴ）を**実3Dモデル `assets/apple.glb`** に差し替え（石井さん作の `apple_final.blend` を Blender 5.1.2 ヘッドレスで GLB 変換）。`dropHeart` で `instApple()`（読込済なら clone、未読込なら赤球フォールバック）。scale 0.085・y-4cm 調整
 - 🐻 巨大グマ（Lv6）を**CC0 モデル `assets/bear.glb`（Hexabear / Polygonal Mind・CC0）** に差し替え。`buildEnemyMesh` の bear6 で `instBear()`（SkeletonUtils.clone・skinned）、未読込/失敗時は手続き熊にフォールバック。ブルート(Lv5)は手続き熊のまま
