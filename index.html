@@ -325,6 +325,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/27 — Build 71</div>
+      <ul>
+        <li>🏚️ ハウスを<b>ファンタジーキャビン GLB</b>（cabin.glb）に差し替え。ロード後に自動で手続き生成の仮ハウスをスワップ</li>
+        <li>🍎 回復アイテムのリンゴを<b>新モデル</b>（apple_applelike.glb）に差し替え</li>
+      </ul>
       <div class="clog-day">6/26 — Build 70</div>
       <ul>
         <li>⚔️ <b>バトルが始まらない問題を修正</b>（何回か開き直さないと繋がらない件）。原因は<b>"二重ホスト"</b>（両者が別々の部屋のホストになりペアにならない）。対策：<b>①一人で待っているホストは相手のホストを見つけたら自動で合流</b>（部屋ID小＝ホスト継続・大＝ゲスト降格で必ず1組に収束）、<b>②スマホ復帰時に即再マッチ</b>（画面消灯で取りこぼした合図を回収）、<b>③待ち受けの心拍を密に＋猶予を延長＋退出時に残骸を掃除</b>。開き直さなくても数秒で繋がるように</li>
@@ -583,7 +588,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='70';
+const BUILD='71';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -662,6 +667,13 @@ function makeCrystal(x,z){ const h=rand(2.5,5); const col=new THREE.Color().setH
   //  Higher emissiveIntensity keeps the crystals glowing; we just no longer light the ground around them.)
   addObstacle(x,z,0.8); crystals.push(m);
 }
+const houseSlots=[];
+function applyCabins(){ if(!GLB.cabin.scene) return;
+  houseSlots.forEach(g=>{
+    while(g.children.length) g.remove(g.children[0]);
+    const m=GLB.cabin.scene.clone(true);
+    m.traverse(o=>{ if(o.isMesh){ opaqueClone(o); o.castShadow=true; o.receiveShadow=true; o.frustumCulled=false; } });
+    m.scale.setScalar(0.35); m.rotation.x=-Math.PI/2; m.rotation.y=Math.PI; g.add(m); }); }
 function makeHouse(x,z,rot){ const g=new THREE.Group();
   const base=new THREE.Mesh(new THREE.BoxGeometry(5,3,4),new THREE.MeshStandardMaterial({color:0xe8d9b5,roughness:1}));
   base.position.y=1.5; base.castShadow=base.receiveShadow=true;
@@ -669,8 +681,7 @@ function makeHouse(x,z,rot){ const g=new THREE.Group();
   roof.position.y=4.1; roof.rotation.y=Math.PI/4; roof.castShadow=true;
   const door=new THREE.Mesh(new THREE.BoxGeometry(1.1,1.8,0.1),new THREE.MeshStandardMaterial({color:0x5a3a22}));
   door.position.set(0,0.9,2.01); g.add(base,roof,door); g.position.set(x,0,z); g.rotation.y=rot;
-  scene.add(g); addObstacle(x,z,3.4);
-}
+  scene.add(g); addObstacle(x,z,3.4); houseSlots.push(g); }
 makeHouse(-12,-9,0.3); makeHouse(12,-12,-0.5); makeHouse(0,16,Math.PI);
 for(let i=0;i<120;i++){ const a=Math.random()*TAU,d=rand(22,WORLD-8); const x=Math.cos(a)*d,z=Math.sin(a)*d;
   const t=Math.random(); if(t<0.55)makeTree(x,z); else if(t<0.82)makeRock(x,z); else makeCrystal(x,z); }
@@ -846,7 +857,7 @@ function buildEnemyMesh(typeKey,boss,col){
   return {group:g, body, parts:null};
 }
 // ---- extra glTF assets: 🍎 apple pickup + 🐻 Lv6 bear + animated CC0 monsters (async load; fallback until ready) ----
-const GLB={ apple:{url:'assets/apple.glb', scene:null}, bear:{url:'assets/bear.glb', scene:null} };
+const GLB={ apple:{url:'assets/apple.glb', scene:null}, bear:{url:'assets/bear.glb', scene:null}, cabin:{url:'assets/cabin.glb', scene:null} };
 // Quaternius animated monsters (CC0) — join the spawn pool after 3:00. nscale normalises each to ~1 unit tall (archetype scale = final height)
 const MODELS={
   bat:     {url:'assets/bat.glb',      scene:null, clips:null, nscale:0.215, walk:'Flying',  fly:true  },
@@ -855,15 +866,16 @@ const MODELS={
   slime:   {url:'assets/slime.glb',    scene:null, clips:null, nscale:0.513, walk:'Walk',    fly:false },
 };
 (function(){ const L=new GLTFLoader(); const all=Object.assign({},GLB,MODELS);
-  for(const k in all){ const slot=all[k];
-    L.load(slot.url, gltf=>{ slot.scene=gltf.scene; slot.clips=gltf.animations||[]; slot.scene.traverse(o=>{ if(o.isMesh){ o.castShadow=false; o.frustumCulled=false; } }); },
+  for(const k in all){ const slot=all[k]; const key=k;
+    L.load(slot.url, gltf=>{ slot.scene=gltf.scene; slot.clips=gltf.animations||[]; slot.scene.traverse(o=>{ if(o.isMesh){ o.castShadow=false; o.frustumCulled=false; } });
+      if(key==='cabin') applyCabins(); },
       undefined, err=>{ console.warn('GLB load failed:',k,err); }); } })();
 // FBX→glb conversion can bake baseColor alpha=0 (material.opacity:0) → invisible meshes. Clone every material OPAQUE.
 function opaqueClone(o){ if(!o.material) return; const f=m=>{ const c=m.clone(); c.transparent=false; c.opacity=1; c.depthWrite=true; return c; };
   o.material = Array.isArray(o.material) ? o.material.map(f) : f(o.material); }
 function instApple(){ if(!GLB.apple.scene) return null;   // returns a Group, or null if not loaded yet
   const m=GLB.apple.scene.clone(true); m.traverse(o=>{ if(o.isMesh) opaqueClone(o); });
-  m.scale.setScalar(0.085); m.position.y=-0.04; const g=new THREE.Group(); g.add(m); return g; }
+  m.scale.setScalar(0.28); const g=new THREE.Group(); g.add(m); return g; }
 function instBear(){ if(!GLB.bear.scene) return null;     // returns {group, body} (skinned), or null
   let m; try{ m=cloneSkeleton(GLB.bear.scene); }catch(e){ return null; }
   let body=null; m.traverse(o=>{ if(o.isMesh){ opaqueClone(o); o.frustumCulled=false; if(!body) body=o; } });
