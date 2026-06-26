@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 59</div>
+      <ul>
+        <li>📈 <b>レベルアップ必要XPの伸びを緩やかに</b>（倍率 1.32→1.18）。後半でもレベルが上がりやすく＝カードが取りやすくなった（例: Lv20の必要XP ~2600→~500）</li>
+      </ul>
       <div class="clog-day">6/26 — Build 58</div>
       <ul>
         <li>⚔️ <b>3分経過後はモンスターのHPとXPが2倍</b>に（3:00以降に出る敵が対象。難度UP＆レベルアップも更に加速）</li>
@@ -530,7 +534,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='58';
+const BUILD='59';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1084,7 +1088,7 @@ function addXP(v){ player.xp+=v*player.growth;
     checkEvolutions(); renderLoadout('bolt'); }   // reflect the bolt auto-level on the loadout pip + allow its evolution to fire
   refreshHUD(); updateShopBtn();
 }
-function consumeLevel(){ player.xp-=player.xpNext; player.level++; player.xpNext=Math.round(player.xpNext*1.32+4); }
+function consumeLevel(){ player.xp-=player.xpNext; player.level++; player.xpNext=Math.round(player.xpNext*1.18+4); }   // gentler curve (was 1.32) so late-game levels/cards stay reachable
 
 // ===================== 🛒 SHOP (press button → buy from ALL cards, 1 credit each) =====================
 function updateShopBtn(){ const b=document.getElementById('shopBtn'); if(!b)return;
