@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 70</div>
+      <ul>
+        <li>⚔️ <b>バトルが始まらない問題を修正</b>（何回か開き直さないと繋がらない件）。原因は<b>"二重ホスト"</b>（両者が別々の部屋のホストになりペアにならない）。対策：<b>①一人で待っているホストは相手のホストを見つけたら自動で合流</b>（部屋ID小＝ホスト継続・大＝ゲスト降格で必ず1組に収束）、<b>②スマホ復帰時に即再マッチ</b>（画面消灯で取りこぼした合図を回収）、<b>③待ち受けの心拍を密に＋猶予を延長＋退出時に残骸を掃除</b>。開き直さなくても数秒で繋がるように</li>
+      </ul>
       <div class="clog-day">6/26 — Build 69</div>
       <ul>
         <li>🔥 <b>発熱対策（軽量化）</b>。スマホで端末が熱くなる問題に対処：<b>①FPSを60に上限</b>（120Hz端末の描画回数が約半分＝GPU/CPU負荷減）、<b>②クリスタルの点光源 約20個を削除</b>（全マテリアルのライト計算が軽く・クリスタル自体は発光のまま）、<b>③木・岩の影を無効化</b>（影パスの描画激減・キャラの足元の影は維持）。見た目はほぼ変えずに発熱を下げる狙い</li>
@@ -579,7 +583,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='69';
+const BUILD='70';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1416,7 +1420,10 @@ function start2P(mode){ MP.mode = mode||'coop'; menuButtons.style.display='none'
 function mpLeave(){ const D=MP._D;
   try{ if(MP._unsubOther)MP._unsubOther(); if(MP._unsubDmg)MP._unsubDmg(); if(MP._unsubEnem)MP._unsubEnem(); if(MP._unsubDeaths)MP._unsubDeaths();
     MP._unsubOther=MP._unsubDmg=MP._unsubEnem=MP._unsubDeaths=null;
-    if(D&&MP._meRef)D.remove(MP._meRef); }catch(e){}
+    if(D&&MP._meRef)D.remove(MP._meRef);
+    if(D&&MP.roomId){ try{ D.runTransaction(D.ref(MP.db,'lobby/open_'+(MP.mode||'coop')),(c)=>(c&&c.id===MP.roomId)?null:c); }catch(e){}   // drop my pointer if I own it
+      try{ D.remove(D.ref(MP.db,'lobby/go/'+MP.roomId)); }catch(e){} }   // clean my go flag (housekeeping — fewer stale rooms next time)
+  }catch(e){}
   clearInterval(MP._hb); MP.joined=false; MP.enabled=false; MP.role=null; MP._appliedRole=null;
   if(MP.remote)mpDestroyRemote(); mpClearAllEnemies(); if(mpbadge)mpbadge.style.display='none'; }
 
@@ -1779,7 +1786,7 @@ async function mpMatchmake(){
   let prevRoom=null;
   const res = await D.runTransaction(D.ref(db,'lobby/open_'+(MP.mode||'coop')),(cur)=>{
     const now=Date.now();
-    if(cur && cur.id && (now-(cur.ts||0)<25000)){ prevRoom=cur.id; return null; }  // fresh waiting room → I join it
+    if(cur && cur.id && (now-(cur.ts||0)<40000)){ prevRoom=cur.id; return null; }  // fresh waiting room → I join it (ghost rooms are caught below by the p1-liveness check, so a wider window is safe)
     return { id:newId, ts:now };                                                    // none → I host & advertise
   });
   const committed = res.snapshot.val();
@@ -1855,7 +1862,7 @@ function mpEnterRoom(){
   setBadge('🟡 相手を待っています…','#ffcf3a');
   // 2nd player joined → raise the persistent "go" flag (host watches it) and start immediately ourselves.
   if(MP.role==='guest'){ try{ D.set(goRef,true); }catch(e){} if(game.state==='lobby') startGame(); }
-  MP._aloneTicks=0; clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,3000);
+  MP._aloneTicks=0; clearInterval(MP._hb); MP._hb=setInterval(mpHeartbeat,2000);   // 2s so the waiting pointer stays fresh + double-host resolves fast
 }
 
 function mpHeartbeat(){
@@ -1871,7 +1878,8 @@ function mpHeartbeat(){
   if(alone){
     MP._aloneTicks=(MP._aloneTicks||0)+1;
     if(MP.mySlot==='p2' && MP._aloneTicks>=2){ MP._aloneTicks=0; mpResetAndRematch(); return; }  // host vanished → re-host (wait 2 ticks to avoid churn)
-    D.set(D.ref(db,'lobby/open_'+(MP.mode||'coop')), { id:MP.roomId, ts:Date.now() });  // advertise for a 2nd player
+    if(MP.mySlot==='p1' && game.state==='lobby'){ mpHostReconcile(); }   // alone host in lobby → break any double-host, else re-claim the pointer
+    else { D.set(D.ref(db,'lobby/open_'+(MP.mode||'coop')), { id:MP.roomId, ts:Date.now() }); }  // advertise for a 2nd player
   } else {
     MP._aloneTicks=0;
     D.runTransaction(D.ref(db,'lobby/open_'+(MP.mode||'coop')),(cur)=> (cur&&cur.id===MP.roomId)?null:cur );  // paired → stop advertising
@@ -1886,6 +1894,59 @@ async function mpResetAndRematch(){
   try{ await mpMatchmake(); }catch(e){ console.warn('rematch failed',e); }
   MP._rematching=false;
 }
+
+// double-host resolver: two clients can each end up hosting their own room (both tapped >window apart, or a phone
+// backgrounded so its pointer went stale and the other became a 2nd host). When alone in the lobby, a host reads the
+// pointer; if a DIFFERENT live host with a SMALLER roomId is advertising (and its guest slot is free), demote to guest
+// and join it. Firebase push-keys sort by creation time, so the earlier room wins — deterministic, exactly one side
+// demotes, and they converge in ~1-2 heartbeats. Otherwise just (re)claim the pointer so the other host can find me.
+async function mpHostReconcile(){
+  if(MP._reconciling || !MP.joined) return;
+  const D=MP._D, db=MP.db, key='lobby/open_'+(MP.mode||'coop');
+  let ptr=null; try{ ptr=(await D.get(D.ref(db,key))).val(); }catch(e){}
+  if(game.state!=='lobby' || !MP.joined || MP.mySlot!=='p1') return;   // re-check: state may have changed across the await
+  const now=Date.now();
+  if(ptr && ptr.id && ptr.id!==MP.roomId && (now-(ptr.ts||0)<40000) && ptr.id<MP.roomId){
+    try{ const [s1,s2]=await Promise.all([ D.get(D.ref(db,`rooms/${ptr.id}/players/p1`)), D.get(D.ref(db,`rooms/${ptr.id}/players/p2`)) ]);
+      const v1=s1.val(), v2=s2.val();
+      const hostAlive  = v1 && v1.t && (Date.now()-v1.t < 12000);
+      const guestBusy  = v2 && v2.t && (Date.now()-v2.t < 12000);
+      if(hostAlive && !guestBusy && game.state==='lobby' && MP.mySlot==='p1'){ mpJoinSpecificRoom(ptr.id); return; }
+    }catch(e){}
+  }
+  try{ D.set(D.ref(db,key), { id:MP.roomId, ts:Date.now() }); }catch(e){}   // (re)advertise my room so the other host finds me
+}
+
+// demote from host(p1) of my own room → guest(p2) of an existing room (used by mpHostReconcile to break a double-host).
+// Only ever runs in the lobby, so there is no live run/enemy state to lose. mpEnterRoom raises the guest "go" flag,
+// which starts the host immediately. If the target turns out dead, the normal p2-alone safety net re-matches.
+async function mpJoinSpecificRoom(roomId){
+  if(MP._reconciling) return; MP._reconciling=true;
+  const D=MP._D, db=MP.db;
+  try{
+    if(MP._unsubOther){ MP._unsubOther(); MP._unsubOther=null; }
+    try{ if(MP._meRef) await D.remove(MP._meRef); }catch(e){}                                                       // drop my old p1 presence node
+    try{ D.remove(D.ref(db,'lobby/go/'+MP.roomId)); }catch(e){}                                                     // clean my old go flag
+    try{ D.runTransaction(D.ref(db,'lobby/open_'+(MP.mode||'coop')),(c)=>(c&&c.id===MP.roomId)?null:c); }catch(e){} // drop my pointer if I own it
+    clearInterval(MP._hb);
+    MP.role='guest'; MP.roomId=roomId; MP.mySlot='p2'; MP.otherSlot='p1';                                          // become the guest of the target room
+    mpEnterRoom();
+  }catch(e){ console.warn('join-specific failed',e); }
+  MP._reconciling=false;
+}
+
+// recover a backgrounded client the instant it returns: phones suspend the realtime socket + throttle setInterval
+// while the screen is off, so a waiting player can silently miss the pairing. On foreground, re-assert my presence and
+// re-check the lobby (poll the partner slot; a host also re-reads the "go" flag) so we start without a manual reopen.
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden || !MP.enabled || !MP.joined) return;
+  const D=MP._D, db=MP.db;
+  try{ D.set(MP._meRef, mpMyPayload()); D.onDisconnect(MP._meRef).remove(); }catch(e){}
+  if(game.state==='lobby'){
+    try{ D.get(D.ref(db,`rooms/${MP.roomId}/players/${MP.otherSlot}`)).then(s=>{ if(s.exists()&&game.state==='lobby') mpOnRemote(s.val()); }).catch(()=>{}); }catch(e){}
+    if(MP.role==='host'){ try{ D.get(D.ref(db,'lobby/go/'+MP.roomId)).then(s=>{ if(s.val()===true && game.state==='lobby') startGame(); }).catch(()=>{}); }catch(e){} }
+  }
+});
 
 function mpMyPayload(){
   return { x:+player.group.position.x.toFixed(2), z:+player.group.position.z.toFixed(2),
