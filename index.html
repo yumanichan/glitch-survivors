@@ -668,8 +668,8 @@ function makeCrystal(x,z){ const h=rand(2.5,5); const col=new THREE.Color().setH
   addObstacle(x,z,0.8); crystals.push(m);
 }
 const houseSlots=[];
-// cabin.glb (from trimesh) has no materials — vertex colors only — and includes a giant 30x30 ground/dirt/path diorama.
-// Strip the diorama nodes, replace materials with vertex-color-enabled standard mats so the cabin actually renders.
+// cabin.glb (from trimesh) has no materials AND no normals — vertex colors only — plus a giant 30x30 ground/dirt/path diorama.
+// Strip the diorama, compute normals so the mesh can be lit, and use MeshLambertMaterial+vertexColors so the wood/roof tones actually show.
 const CABIN_STRIP=/^(ground|dirt|path|foundation|stone|shrub|firewood|sign|barrel|crate|lantern|chain)/i;
 function applyCabins(){ if(!GLB.cabin.scene) return;
   houseSlots.forEach(g=>{
@@ -678,7 +678,8 @@ function applyCabins(){ if(!GLB.cabin.scene) return;
     const remove=[]; m.traverse(o=>{ if(o.isMesh){
       if(CABIN_STRIP.test(o.name||'')){ remove.push(o); return; }
       const hasCol=!!(o.geometry && o.geometry.attributes && o.geometry.attributes.color);
-      o.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:hasCol,roughness:0.85,metalness:0});
+      if(o.geometry && !o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+      o.material=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:hasCol});
       o.castShadow=true; o.receiveShadow=true; o.frustumCulled=false;
     } });
     remove.forEach(n=>{ if(n.parent) n.parent.remove(n); });
@@ -884,10 +885,12 @@ function opaqueClone(o){ if(!o.material) return; const f=m=>{ const c=m.clone();
   o.material = Array.isArray(o.material) ? o.material.map(f) : f(o.material); }
 function instApple(){ if(!GLB.apple.scene) return null;   // returns a Group, or null if not loaded yet
   const m=GLB.apple.scene.clone(true);
-  // apple.glb is also from trimesh: 0 materials, vertex colors only → default mat ignores them → looks black.
+  // apple.glb is also from trimesh: 0 materials, 0 normals, vertex colors only.
+  // Without normals MeshStandardMaterial reads black; compute normals + use Lambert + vertex colors so the red/green show through.
   m.traverse(o=>{ if(o.isMesh){
     const hasCol=!!(o.geometry && o.geometry.attributes && o.geometry.attributes.color);
-    o.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:hasCol,emissive:0x441111,emissiveIntensity:0.25,roughness:0.45,metalness:0.05}); } });
+    if(o.geometry && !o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+    o.material=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:hasCol}); } });
   m.scale.setScalar(0.28); const g=new THREE.Group(); g.add(m); return g; }
 function instBear(){ if(!GLB.bear.scene) return null;     // returns {group, body} (skinned), or null
   let m; try{ m=cloneSkeleton(GLB.bear.scene); }catch(e){ return null; }
