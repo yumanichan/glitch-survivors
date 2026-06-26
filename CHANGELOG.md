@@ -3,6 +3,10 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 65 — 2026/06/26
+- 🐻 brute（小さい熊/Lv5）：**ノックバック無効**（noKnock に追加）・**HP 70→140**・**speed 1.5→3.0**
+- 🐉 dragon：**ノックバック無効**・**HP 260→780**・**speed 2.6→5.2**、**火の玉の遠距離攻撃を追加**。敵弾システム `enemyShots`＋`spawnFireball`（橙の球・速度15・命中で hurtPlayer＋burst）。enemy ループで `e.ki===DRAGON_KI` のとき約2.6秒ごとにローカルプレイヤーへ発射（fireCd）。dmg=`max(8, e.dmg*0.7)`。resetGame で enemyShots クリア。co-opは各クライアントのドラゴンがローカルプレイヤーを狙う（同期不要）
+
 ## Build 64 — 2026/06/26
 - 🗑️ **リジェネ(regen)/オービットガード(orb)/チャクラム(chakram) をカードプールから除外**（renderShop の WDEF ループに `orb||chakram`、PDEF ループに `regen` の skip を追加。定義は残すが取得不可＝実質削除）
 - 🔮 **新武器「オートオーブ」(autorb) 追加**：`nearestEnemies` で最寄りの敵を自動照準し**紫の玉(0xc04dff)**を発射（デフォルトのシアン bolt と別系統）。spawnProjectile に color 引数＋`projMatFor` キャッシュ追加、弾の hit burst も弾色に。weaponTimers/発射ループ/EVOLVE(オートストーム, req:multi) に配線
