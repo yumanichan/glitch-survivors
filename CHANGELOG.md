@@ -3,6 +3,10 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 64 — 2026/06/26
+- 🗑️ **リジェネ(regen)/オービットガード(orb)/チャクラム(chakram) をカードプールから除外**（renderShop の WDEF ループに `orb||chakram`、PDEF ループに `regen` の skip を追加。定義は残すが取得不可＝実質削除）
+- 🔮 **新武器「オートオーブ」(autorb) 追加**：`nearestEnemies` で最寄りの敵を自動照準し**紫の玉(0xc04dff)**を発射（デフォルトのシアン bolt と別系統）。spawnProjectile に color 引数＋`projMatFor` キャッシュ追加、弾の hit burst も弾色に。weaponTimers/発射ループ/EVOLVE(オートストーム, req:multi) に配線
+
 ## Build 63 — 2026/06/26
 - 🎮 **カメラ基準の移動に修正**：入力の回転を `+camYaw`→`-camYaw`（`wx=ix*cos+iz*sin, wz=-ix*sin+iz*cos`）。カメラの周回方向と入力回転が逆だったため回転後に前後反転していた。デフォルト(camYaw=π)は不変、回転時のみ正される
 - 📱 **モバイルのカメラ回転を追加**：touchハンドラを multi-touch 対応に。1本目=ジョイスティック(移動)、2本目=`camTouch` でドラッグ→camYaw/camPitch 回転。ピンチズームは廃止（2本目を回転に割当）

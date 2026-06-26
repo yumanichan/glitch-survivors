@@ -325,6 +325,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 64</div>
+      <ul>
+        <li>🗑️ <b>リジェネ・オービットガード・チャクラムをカードから削除</b>（ショップに出なくなりました）</li>
+        <li>🔮 新カード <b>「オートオーブ」</b> 追加：<b>近くの敵を自動で狙う紫の玉</b>。デフォルトのシアンの玉とは別系統で自動攻撃します</li>
+      </ul>
       <div class="clog-day">6/26 — Build 63</div>
       <ul>
         <li>🎮 <b>移動をカメラ基準に修正</b>：カメラを回しても「前(W/上)」が常にカメラの向き＝奥に進む（回転後に操作が反転する不具合を解消）</li>
@@ -553,7 +558,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='63';
+const BUILD='64';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -905,10 +910,12 @@ function dropHeart(pos){ let m=instApple();   // 🍎 apple model if loaded, els
 // =================================================================
 const projectiles=[]; const projGeo=new THREE.SphereGeometry(0.22,8,8);
 const projMat=new THREE.MeshStandardMaterial({color:0x9af0ff,emissive:0x46e0c8,emissiveIntensity:1.4,roughness:0.2});
-function spawnProjectile(origin,dir,dmg,pierce){
+const projMatCache={};   // colored projectile materials (e.g. auto-orb) cached by hex
+function projMatFor(c){ return projMatCache[c] || (projMatCache[c]=new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:1.4,roughness:0.2})); }
+function spawnProjectile(origin,dir,dmg,pierce,color){
   if(projectiles.length>140){ const old=projectiles.shift(); scene.remove(old.m); }   // cap projectiles (collision is O(proj×enemies))
-  const m=new THREE.Mesh(projGeo,projMat); m.position.set(origin.x,1.0,origin.z); m.scale.setScalar(1.1); scene.add(m);
-  projectiles.push({m,vel:dir.clone().multiplyScalar(24),dmg,pierce,life:0,hit:new Set(),id:(game._pid=(game._pid||0)+1)});
+  const m=new THREE.Mesh(projGeo, color?projMatFor(color):projMat); m.position.set(origin.x,1.0,origin.z); m.scale.setScalar(1.1); scene.add(m);
+  projectiles.push({m,vel:dir.clone().multiplyScalar(24),dmg,pierce,color:color||0x9af0ff,life:0,hit:new Set(),id:(game._pid=(game._pid||0)+1)});
 }
 // shared meshes used to draw the CO-OP PARTNER's attacks (visual only — no collision/damage)
 const remoteOrbGeo=new THREE.SphereGeometry(0.34,12,12);
@@ -981,6 +988,16 @@ const WDEF={
       for(let i=0;i<n;i++){ const a=(game._chakA||0)+i/n*TAU; const dir=new THREE.Vector3(Math.sin(a),0,Math.cos(a)); spawnProjectile(player.group.position,dir,dmg,2+Math.floor(l/3)+(evo?2:0)); }
       game._chakA=(game._chakA||0)+0.6; sfx.shoot(); },
     desc:(l)=>`${3+Math.floor((l+1)/2)}方向に貫通刃 · ダメージ${Math.round((13+(l+1)*6))}` },
+  autorb:{ name:'オートオーブ', emoji:'🔮', max:8,
+    cd:(l)=>Math.max(0.28,0.75-l*0.05),
+    fire(l,evo){ const count=1+Math.floor(l/2)+(player.amount||0)+(evo?3:0); const dmg=(12+l*5)*player.might*(evo?1.6:1);
+      const pierce=1+Math.floor(l/3)+(evo?2:0); const o=player.group.position;
+      const tg=nearestEnemies(count,46);
+      const aim=(e)=>{ const d=new THREE.Vector3(e.group.position.x-o.x,0,e.group.position.z-o.z); if(d.lengthSq()<1e-4)d.set(0,0,1); return d.normalize(); };
+      if(tg.length){ for(let i=0;i<count;i++) spawnProjectile(o,aim(tg[i%tg.length]),dmg,pierce,0xc04dff); }   // auto-aim nearest, purple orb (separate from the cyan bolt)
+      else { let d=new THREE.Vector3(player.lastDir.x,0,player.lastDir.z); if(d.lengthSq()<1e-4)d.set(0,0,1); d.normalize(); for(let i=0;i<count;i++) spawnProjectile(o,d.clone(),dmg,pierce,0xc04dff); }
+      sfx.shoot(); },
+    desc:(l)=>`近い敵を自動で狙う紫の玉 ${1+Math.floor((l+1)/2)}発 · ダメージ${Math.round((12+(l+1)*5))}` },
 };
 const PDEF={
   might:{ name:'マイト', emoji:'💪', max:5, d:'全ダメージ +15%', apply(){player.might+=0.15;} },
@@ -996,7 +1013,7 @@ const PDEF={
   multi:{ name:'マルチショット', emoji:'🔁', max:3, d:'弾数 +1', apply(){player.amount=(player.amount||0)+1;} },
   leech:{ name:'ライフスティール', emoji:'🩸', max:5, d:'撃破で HP+1', apply(){player.lifesteal=(player.lifesteal||0)+1;} },
 };
-const weaponTimers={ bolt:0, nova:0, spark:0, meteor:0, blade:0, chakram:0 };
+const weaponTimers={ bolt:0, nova:0, spark:0, meteor:0, blade:0, chakram:0, autorb:0 };
 // 🧬 武器の進化: 武器Lv MAX + 対応パッシブ Lv MAX で進化版に化ける
 const EVOLVE={
   bolt:   { req:'crit',  emoji:'🌩️', name:'ストームボルト' },
@@ -1007,6 +1024,7 @@ const EVOLVE={
   meteor: { req:'might', emoji:'🌠', name:'メテオストーム' },
   blade:  { req:'boots', emoji:'🌀', name:'ブレードストーム' },
   chakram:{ req:'multi', emoji:'💫', name:'チャクラムストーム' },
+  autorb: { req:'multi', emoji:'🌀', name:'オートストーム' },
 };
 function checkEvolutions(){
   for(const id in EVOLVE){ const ev=EVOLVE[id];
@@ -1182,8 +1200,8 @@ function renderShop(){
     if(affordable) c.onclick=()=>buyCard(type,id);
     cont.appendChild(c);
   };
-  for(const id in WDEF){ if(id==='bolt')continue; mk('w',id); }   // bolt auto-levels every level (all modes) → not a shop card
-  for(const id in PDEF) mk('p',id);
+  for(const id in WDEF){ if(id==='bolt'||id==='orb'||id==='chakram')continue; mk('w',id); }   // bolt auto-levels; orb(オービットガード)/chakram(チャクラム) removed from the pool
+  for(const id in PDEF){ if(id==='regen')continue; mk('p',id); }   // regen(リジェネ) removed from the pool
   const sr=document.getElementById('shopReset');   // show 選び直す only after you've spent at least 1 credit this visit
   if(sr) sr.style.display = (game._shopSnap && credits < game._shopSnap.credits) ? 'inline-block' : 'none';
 }
@@ -1393,7 +1411,7 @@ function resetGame(){
   Object.assign(game,{ state:'playing',time:0,kills:0,shake:0,spawnT:0,bossT:90,bear6T:0,milestone:0,picking:false,shopping:false });
   if(mpBattle()){ MP.remoteLives=3; mpSendLives(); updateBattleHud(); battleSpawn(); }   // fresh lives + opposite-side spawn for a rematch
   updateShopBtn();
-  weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0; weaponTimers.meteor=0; weaponTimers.blade=0; weaponTimers.chakram=0;
+  weaponTimers.bolt=0; weaponTimers.nova=0; weaponTimers.spark=0; weaponTimers.meteor=0; weaponTimers.blade=0; weaponTimers.chakram=0; weaponTimers.autorb=0;
   if(player.actions['Death'])player.actions['Death'].stop(); player.current=null; fade('Idle',0);
   sfx.musicStart(); ui.killval.textContent=0; renderLoadout(); refreshHUD();
 }
@@ -1502,7 +1520,7 @@ function update(dt){
 
     if(!player.down && !player.inHouse){   // weapons fire only while up and out of the house
     // ---- weapons: timer-based ----
-    for(const id of ['bolt','nova','spark','meteor','blade','chakram']){ if(!(id in player.weapons))continue;
+    for(const id of ['bolt','nova','spark','meteor','blade','chakram','autorb']){ if(!(id in player.weapons))continue;
       weaponTimers[id]-=dt; if(weaponTimers[id]<=0){ const l=player.weapons[id]; const ev=!!(player.evo&&player.evo[id]);
         weaponTimers[id]=WDEF[id].cd(l)*player.haste*(ev?0.7:1); WDEF[id].fire(l,ev); } }   // evolved = faster too
 
@@ -1545,14 +1563,14 @@ function update(dt){
     for(const e of enemies){ if(e.dead||pr.hit.has(e))continue;
       const dx=e.group.position.x-pr.m.position.x,dz=e.group.position.z-pr.m.position.z; const d=Math.hypot(dx,dz);
       if(d<0.5+e.scale*0.65){ pr.hit.add(e); hurtEnemy(e,pr.dmg,pr.vel.x,pr.vel.z,Math.hypot(pr.vel.x,pr.vel.z),0.6);
-        burst(pr.m.position.clone(),0x9af0ff,5,0.6); pr.pierce--; if(pr.pierce<0)break; } }
+        burst(pr.m.position.clone(),pr.color,5,0.6); pr.pierce--; if(pr.pierce<0)break; } }
     // battle: this projectile can also hit the opponent (once)
     if(mpBattle() && !pr.hit.has('P') && MP.remote && MP.remote.present && !mpRemoteInHouse()){
       const rx=MP.remote.group.position.x-pr.m.position.x, rz=MP.remote.group.position.z-pr.m.position.z;
       if(rx*rx+rz*rz < 0.85*0.85){ pr.hit.add('P'); pvpHurt(pr.m.position.x,pr.m.position.z,0.85,pr.dmg); pr.pierce--; } }
     // blocked by houses/trees/rocks — attacks don't pass through walls
     if(pr.pierce>=0){ for(const o of obstacles){ const ox=pr.m.position.x-o.x, oz=pr.m.position.z-o.z; const min=o.r+0.15;
-      if(ox*ox+oz*oz < min*min){ pr.pierce=-1; burst(pr.m.position.clone(),0x9af0ff,4,0.5); break; } } }
+      if(ox*ox+oz*oz < min*min){ pr.pierce=-1; burst(pr.m.position.clone(),pr.color,4,0.5); break; } } }
     const maxLife=mpBattle()?1.3:2.6, maxDist=mpBattle()?35:70;   // battle: ~half range so fights stay close (solo/co-op unchanged)
     if(pr.pierce<0||pr.life>maxLife||Math.hypot(pr.m.position.x-player.group.position.x,pr.m.position.z-player.group.position.z)>maxDist){
       scene.remove(pr.m); projectiles.splice(i,1); }
