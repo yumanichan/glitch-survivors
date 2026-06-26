@@ -325,6 +325,11 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 62</div>
+      <ul>
+        <li>🧪 テストモードの<b>2キー＝強化チケット+13</b>（カードを13枚引ける）に変更。3キー＝3:00へジャンプは据え置き</li>
+        <li>📈 レベルが速すぎたので<b>XP必要量を上方修正</b>：Lv2以降を<b>3倍</b>、<b>Lv10以降は5レベルごとに×1.5</b>ずつ増加（例: Lv5→126 / Lv10→615 / Lv15→923 / Lv20→1384）</li>
+      </ul>
       <div class="clog-day">6/26 — Build 61</div>
       <ul>
         <li>📈 XPカーブを<b>元（×1.32）に戻し、Lv13以降はフラット（488で頭打ち）</b>に。中盤は元の手応え／終盤は一定でカードが取り続けられる（元は648→854…と爆発していた）</li>
@@ -542,7 +547,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='61';
+const BUILD='62';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1096,7 +1101,10 @@ function addXP(v){ player.xp+=v*player.growth;
     checkEvolutions(); renderLoadout('bolt'); }   // reflect the bolt auto-level on the loadout pip + allow its evolution to fire
   refreshHUD(); updateShopBtn();
 }
-function consumeLevel(){ player.xp-=player.xpNext; player.level++; player.xpNext=Math.min(488,Math.round(player.xpNext*1.32+4)); }   // original 1.32 curve, then FLAT from Lv13 (capped at 488) so late-game cards keep coming
+const GEO3=[0,5,33,57,87,126,177,246,336,456,615];   // XP to next level (index=level): L1→2=5, L2→3..L10→11 = original 1.32 curve ×3
+function consumeLevel(){ player.xp-=player.xpNext; player.level++; const L=player.level;
+  // 3× the original curve up to Lv10, then ×1.5 every 5 levels from Lv10 (so leveling slows in the late game)
+  player.xpNext = L<=10 ? GEO3[L] : Math.round(615*Math.pow(1.5,Math.floor((L-10)/5))); }
 
 // ===================== 🛒 SHOP (press button → buy from ALL cards, 1 credit each) =====================
 function updateShopBtn(){ const b=document.getElementById('shopBtn'); if(!b)return;
@@ -1221,10 +1229,10 @@ addEventListener('keydown',e=>{ keys[e.code]=true;
   if(e.code==='Space'){e.preventDefault(); if(game.state==='playing'&&!game.shopping)doDash();}
   if(e.code==='KeyB'){ e.preventDefault(); if(game.shopping) closeShop(); else openShop(); }   // B = open/close shop
   // 🧪 test mode: T toggles; while ON, 3→jump to 3:00, 2→jump to 2:00 (skips the wait to test late-game spawns)
-  if(e.code==='KeyT'){ game.testMode=!game.testMode; toast(game.testMode?'🧪 テストモード ON（3=3分 / 2=2分）':'🧪 テストモード OFF', game.testMode?'gold':'bad'); }
+  if(e.code==='KeyT'){ game.testMode=!game.testMode; toast(game.testMode?'🧪 テストモード ON（3=3分へ / 2=強化チケット+13）':'🧪 テストモード OFF', game.testMode?'gold':'bad'); }
   if(game.testMode && game.state==='playing'){
     if(e.code==='Digit3'){ game.time=180; toast('⏩ 3:00 へジャンプ','gold'); }
-    if(e.code==='Digit2'){ game.time=120; toast('⏩ 2:00 へジャンプ','gold'); }
+    if(e.code==='Digit2'){ player.credits=(player.credits||0)+13; updateShopBtn(); toast('🃏 強化チケット +13','gold'); }   // test: grant 13 shop cards
   }
   if(game.shopping && (e.code==='Escape'||e.code==='Enter')){ e.preventDefault(); closeShop(); }
 });
