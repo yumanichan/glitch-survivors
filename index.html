@@ -325,6 +325,10 @@
   <div class="clog-card">
     <h2>📜 変更ログ</h2>
     <div class="clog-body">
+      <div class="clog-day">6/26 — Build 67</div>
+      <ul>
+        <li>📱 <b>移動スティックを左側に独立</b>。<b>画面左＝移動</b>／<b>画面右＝カメラ</b>（1本指ドラッグで視点回転・2本指ピンチでズーム）。左手で移動しながら右手でズーム/視点変更が<b>同時にできる</b>ように（操作しやすく）</li>
+      </ul>
       <div class="clog-day">6/26 — Build 66</div>
       <ul>
         <li>📱 <b>ピンチでズーム復活</b>（iPhone等のタッチ）：2本指を<b>縮めるとズームアウト・広げるとズームイン</b>。2本指ドラッグで<b>カメラ回転</b>も同時に可能（2本指の間は移動は止まる）。1本指は従来通り移動</li>
@@ -567,7 +571,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const TAU=Math.PI*2;
 
 // ---------- auto-updater: pull the newest build so cached devices never get stuck on old code ----------
-const BUILD='66';
+const BUILD='67';
 (function(){ try{
   if(new URLSearchParams(location.search).get('v')===BUILD) return;        // already on a fresh versioned load
   fetch(location.pathname+'?cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -1285,7 +1289,7 @@ renderer.domElement.addEventListener('wheel',e=>{ camDist=clamp(camDist+Math.sig
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
 // ----- touch controls: floating joystick that appears centered where you press; pinch = zoom -----
 const joy={active:false,id:null,ox:0,oy:0,nx:0,ny:0};
-let pinchPrev=null, midPrev=null;   // 2-finger gesture: pinch distance + midpoint → zoom + rotate (mobile)
+let pinchPrev=null, midPrev=null, camRot=null;   // camera (right side): pinch=zoom, drag=rotate. joystick = left side (independent)
 const JOY_R=66;
 const joybase=document.getElementById('joybase'), joythumb=document.getElementById('joythumb'), touchhint=document.getElementById('touchhint');
 function enableTouchUI(){ if(!document.body.classList.contains('touch')){ document.body.classList.add('touch'); if(touchhint){ touchhint.style.display='block'; setTimeout(()=>touchhint.style.display='none',4000); } } }
@@ -1294,27 +1298,34 @@ function joyMove(t){ let dx=t.clientX-joy.ox, dy=t.clientY-joy.oy; const d=Math.
   if(d>JOY_R){ dx=dx/d*JOY_R; dy=dy/d*JOY_R; } setThumb(dx,dy); joy.nx=dx/JOY_R; joy.ny=dy/JOY_R; }
 
 renderer.domElement.addEventListener('touchstart',e=>{ e.preventDefault(); enableTouchUI();
-  if(!joy.active){ const t=e.changedTouches[0]; joy.active=true; joy.id=t.identifier; joy.ox=t.clientX; joy.oy=t.clientY; joy.nx=joy.ny=0;   // 1st finger = move joystick
-    joybase.style.left=t.clientX+'px'; joybase.style.top=t.clientY+'px'; joybase.style.display='block'; setThumb(0,0); }
-  if(e.touches.length>=2){ const a=e.touches[0],b=e.touches[1];   // 2nd finger → camera: pinch = zoom, drag = rotate
-    pinchPrev=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
-    midPrev={x:(a.clientX+b.clientX)/2,y:(a.clientY+b.clientY)/2}; joy.nx=joy.ny=0; }   // freeze movement while 2 fingers down
+  const halfW=window.innerWidth/2;
+  for(const t of e.changedTouches){
+    if(!joy.active && t.clientX<halfW){ joy.active=true; joy.id=t.identifier; joy.ox=t.clientX; joy.oy=t.clientY; joy.nx=joy.ny=0;   // 画面左 = 移動スティック
+      joybase.style.left=t.clientX+'px'; joybase.style.top=t.clientY+'px'; joybase.style.display='block'; setThumb(0,0); }
+  }
+  pinchPrev=null; midPrev=null; camRot=null;   // camera baselines re-set on the next move (no jump)
 },{passive:false});
 
 renderer.domElement.addEventListener('touchmove',e=>{ e.preventDefault();
-  if(e.touches.length>=2){   // 2 fingers: pinch (together=zoom out / spread=zoom in) + drag = rotate; movement frozen
-    const a=e.touches[0],b=e.touches[1];
-    const nd=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+  let joyT=null; const cam=[];
+  for(const t of e.touches){ if(joy.active && t.identifier===joy.id) joyT=t; else cam.push(t); }   // joystick finger vs camera fingers (everything else)
+  if(joyT) joyMove(joyT);
+  if(cam.length>=2){   // 2 camera fingers: pinch = zoom (together=out / spread=in), drag = rotate
+    const a=cam[0],b=cam[1]; const nd=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
     const mx=(a.clientX+b.clientX)/2, my=(a.clientY+b.clientY)/2;
-    if(pinchPrev!=null) camDist=clamp(camDist+(pinchPrev-nd)*0.05,10,40);   // pinch in (nd↓) → camDist↑ → zoom out
+    if(pinchPrev!=null) camDist=clamp(camDist+(pinchPrev-nd)*0.05,10,40);
     if(midPrev){ camYaw-=(mx-midPrev.x)*0.006; camPitch=clamp(camPitch-(my-midPrev.y)*0.005,0.45,1.35); }
-    pinchPrev=nd; midPrev={x:mx,y:my}; joy.nx=joy.ny=0;
-  } else { for(const t of e.changedTouches){ if(joy.active && t.identifier===joy.id) joyMove(t); } }
+    pinchPrev=nd; midPrev={x:mx,y:my}; camRot=null;
+  } else if(cam.length===1){   // 1 camera finger: drag = rotate viewpoint
+    const t=cam[0];
+    if(camRot&&camRot.id===t.identifier){ camYaw-=(t.clientX-camRot.x)*0.006; camPitch=clamp(camPitch-(t.clientY-camRot.y)*0.005,0.45,1.35); }
+    camRot={id:t.identifier,x:t.clientX,y:t.clientY}; pinchPrev=null; midPrev=null;
+  } else { pinchPrev=null; midPrev=null; camRot=null; }
 },{passive:false});
 
 function endTouch(e){ e.preventDefault();
   for(const t of e.changedTouches){ if(t.identifier===joy.id){ joy.active=false; joy.id=null; joy.nx=joy.ny=0; joybase.style.display='none'; } }
-  if(e.touches.length<2){ pinchPrev=null; midPrev=null; }   // back to ≤1 finger → exit camera mode
+  pinchPrev=null; midPrev=null; camRot=null;   // reset camera baselines (re-set on next move)
 }
 renderer.domElement.addEventListener('touchend',endTouch,{passive:false});
 renderer.domElement.addEventListener('touchcancel',endTouch,{passive:false});
