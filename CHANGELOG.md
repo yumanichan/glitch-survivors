@@ -3,6 +3,9 @@
 このゲームの更新履歴。メニュー画面の「📜 変更ログ」と同じ内容を、リポジトリにも残す。
 バックアップは `backups/<日付>-<連番>-before|after/` に、デプロイ時のスナップショットは `deployed/<日付>/` に保存している。
 
+## Build 66 — 2026/06/26
+- 📱 **ピンチズーム復活**（Build 63 で2本目=回転に使い外していた）。タッチ処理を2本指対応に：`pinchPrev`(指間距離)→`camDist+=(pinchPrev-nd)*0.05`（縮める=ズームアウト/広げる=ズームイン、clamp 10-40）、`midPrev`(中点)→2本指ドラッグでcamYaw/camPitch回転。2本指中はジョイスティック凍結（joy.nx=ny=0）。1本指=移動は従来通り
+
 ## Build 65 — 2026/06/26
 - 🐻 brute（小さい熊/Lv5）：**ノックバック無効**（noKnock に追加）・**HP 70→140**・**speed 1.5→3.0**
 - 🐉 dragon：**ノックバック無効**・**HP 260→780**・**speed 2.6→5.2**、**火の玉の遠距離攻撃を追加**。敵弾システム `enemyShots`＋`spawnFireball`（橙の球・速度15・命中で hurtPlayer＋burst）。enemy ループで `e.ki===DRAGON_KI` のとき約2.6秒ごとにローカルプレイヤーへ発射（fireCd）。dmg=`max(8, e.dmg*0.7)`。resetGame で enemyShots クリア。co-opは各クライアントのドラゴンがローカルプレイヤーを狙う（同期不要）
